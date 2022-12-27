@@ -9,8 +9,26 @@ pub struct Outcome {
 }
 
 #[derive(Debug)]
+pub enum Measurement {
+	Amps(f64),
+	Volts(f64),
+}
+
+impl fmt::Display for Measurement {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::Amps(q) => write!(f, "{q}A"),
+			Self::Volts(q) => write!(f, "{q}V"),
+		}
+	}
+}
+
+#[derive(Debug)]
 pub enum Error {
-	UnexpectedVoltage { expected: i32, actual: i32 }
+	UnexpectedMeasurement {
+		expected: Measurement,
+		actual: Measurement,
+	},
 }
 
 impl error::Error for Error {}
@@ -18,7 +36,7 @@ impl error::Error for Error {}
 impl fmt::Display for Error {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			Error::UnexpectedVoltage { expected, actual } => write!(f, "expected {expected}V but measured {actual}V")
+			Error::UnexpectedMeasurement { expected, actual } => write!(f, "expected {expected}V but measured {actual}V")
 		}
 	}
 }

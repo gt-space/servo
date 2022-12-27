@@ -193,9 +193,9 @@ async fn main() -> anyhow::Result<()> {
 		App::new()
 			.wrap(LoggingMiddlewareFactory::new(&threaded_database))
 			.app_data(web::Data::new(threaded_database.clone()))
-			.route("/auth", web::post().to(routes::post_auth))
-			.route("/logs", web::get().to(routes::get_logs))
-			.route("/test", web::post().to(routes::post_test))
+			.route("/auth", web::post().to(routes::auth::post_auth))
+			.route("/meta/logs", web::get().to(routes::meta::get_logs))
+			.route("/hitl/test", web::post().to(routes::hitl::post_test))
 			.route("/admin/create-user", web::post().to(routes::admin::post_create_user))
 			.route("/admin/sql", web::post().to(routes::admin::post_sql))
 	}).bind(("127.0.0.1", 7400))?
