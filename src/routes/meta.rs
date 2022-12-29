@@ -25,8 +25,8 @@ pub async fn get_logs(request: Query<LogsRequest>, database: web::Data<ThreadedD
 			initiator: row.get(2)?,
 			start_time: row.get(3)?,
 			end_time: row.get(4)?,
-			status: num::FromPrimitive::from_i32(row.get::<_, Option<i32>>(5)?.unwrap_or(-1))
-				.unwrap_or(TestStatus::Fail),
+			status: TestStatus::from_i32(row.get::<_, Option<i32>>(5)?.unwrap_or(-1))
+				.expect("invalid test status stored in database"),
 			message: row.get(6)?,
 		})
 	}).map_err(|_| error::ErrorInternalServerError("sql error"))?
