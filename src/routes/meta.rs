@@ -1,12 +1,12 @@
 use crate::{
-	ThreadedDatabase,
-	User,
+	extractors::User,
 	protocol::{
 		LogsRequest,
 		LogsResponse,
 		TestLog,
 		TestStatus,
 	},
+	ThreadedDatabase,
 };
 
 use actix_web::{error, Result, web::{self, Json, Query}};

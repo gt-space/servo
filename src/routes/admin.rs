@@ -1,6 +1,7 @@
 use crate::{
-	ThreadedDatabase, User,
+	extractors::User,
 	protocol::{CreateUserRequest, SqlRequest, SqlResponse},
+	ThreadedDatabase,
 };
 
 use actix_web::{error, web::{self, Json}, Result, HttpResponse};

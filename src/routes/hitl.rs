@@ -1,12 +1,12 @@
 use crate::{
+	extractors::User,
 	hitl,
-	ThreadedDatabase,
-	User,
 	protocol::{
 		TestRequest,
 		TestResponse,
 		TestDescription,
 	},
+	ThreadedDatabase,
 };
 
 use actix_web::{error, Result, web::{self, Json}};
