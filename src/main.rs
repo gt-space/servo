@@ -1,4 +1,5 @@
 mod hitl;
+mod forwarding;
 mod protocol;
 mod routes;
 
@@ -16,6 +17,7 @@ use std::{
 	env,
 	fs,
 	future::{Future, ready, Ready},
+	net::{IpAddr, Ipv4Addr, SocketAddr},
 	path::Path,
 	pin::Pin,
 	rc::Rc,
@@ -24,6 +26,7 @@ use std::{
 };
 
 use argon2::password_hash::SaltString;
+use forwarding::ForwardingAgent;
 use rand::rngs::OsRng;
 use rusqlite::{Connection as SqlConnection};
 use tokio::sync::Mutex;
@@ -195,11 +198,13 @@ async fn main() -> anyhow::Result<()> {
 	database.execute("INSERT OR IGNORE INTO Users VALUES ('root', NULL, ?1, 1)", rusqlite::params![root_salt])?;
 
 	let threaded_database = Arc::new(Mutex::new(database));
+	let forwarding_agent = ForwardingAgent::new(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080)).unwrap();
 
 	HttpServer::new(move || {
 		App::new()
 			.wrap(LoggingMiddlewareFactory::new(&threaded_database))
 			.app_data(web::Data::new(threaded_database.clone()))
+			.app_data(web::Data::new(forwarding_agent.clone()))
 			.route("/auth", web::post().to(routes::auth::post_auth))
 			.route("/meta/logs", web::get().to(routes::meta::get_logs))
 			.route("/hitl/test", web::post().to(routes::hitl::post_test))
