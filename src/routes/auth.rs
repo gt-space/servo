@@ -5,7 +5,7 @@ use std::time::SystemTime;
 use uuid::Uuid;
 
 pub async fn post_auth(request: Json<AuthRequest>, database: web::Data<ThreadedDatabase>) -> Result<Json<AuthResponse>> {
-	let database = database.lock().unwrap();
+	let database = database.lock().await;
 
 	let (pass_hash, salt, is_admin): (Option<String>, String, bool) = database
 		.query_row(

@@ -12,7 +12,7 @@ use crate::{
 use actix_web::{error, Result, web::{self, Json, Query}};
 
 pub async fn get_logs(request: Query<LogsRequest>, database: web::Data<ThreadedDatabase>, _user: User) -> Result<Json<LogsResponse>> {
-	let database = database.lock().unwrap();
+	let database = database.lock().await;
 
 	let mut sql = database
 		.prepare("SELECT log_id, test_id, initiator, start_time, end_time, did_pass, message FROM TestLogs LIMIT ?1")

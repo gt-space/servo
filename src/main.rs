@@ -19,13 +19,14 @@ use std::{
 	path::Path,
 	pin::Pin,
 	rc::Rc,
-	sync::{Arc, Mutex},
+	sync::Arc,
 	time::SystemTime,
 };
 
 use argon2::password_hash::SaltString;
 use rand::rngs::OsRng;
 use rusqlite::{Connection as SqlConnection};
+use tokio::sync::Mutex;
 
 pub type ThreadedDatabase = Arc<Mutex<rusqlite::Connection>>;
 
@@ -36,21 +37,28 @@ pub struct User {
 
 impl FromRequest for User {
 	type Error = actix_web::Error;
-	type Future = Ready<Result<Self, Self::Error>>;
+	type Future = Pin<Box<dyn Future<Output = Result<Self, Self::Error>>>>;
 
 	fn from_request(request: &actix_web::HttpRequest, _payload: &mut actix_web::dev::Payload) -> Self::Future {
-		let user = request
+		let database = request.app_data::<Data<ThreadedDatabase>>()
+			.expect("database not included in app data")
+			.clone();
+
+		let session_id = request
 			.headers()
 			.get(header::AUTHORIZATION)
 			.and_then(|header| header.to_str().ok())
-			.filter(|header| header.starts_with("Bearer "))
-			.map(|bearer_id| &bearer_id[7..])
-			.ok_or(error::ErrorUnauthorized("authorization is required for this request"))
-			.and_then(|session_id| {
-				request.app_data::<Data<ThreadedDatabase>>()
-					.expect("database not included in app data")
-					.lock()
-					.expect("database mutex is poisoned")
+			.filter(|&header| header.starts_with("Bearer "))
+			.map(|bearer_id| bearer_id[7..].to_owned())
+			.ok_or(error::ErrorUnauthorized("authorization is required for this request"));
+
+		Box::pin(async move {
+			let database = database
+				.lock()
+				.await;
+
+			session_id.and_then(|session_id| {
+				database
 					.query_row("
 						SELECT S.username, U.is_admin
 						FROM Sessions AS S
@@ -65,9 +73,8 @@ impl FromRequest for User {
 							_ => error::ErrorInternalServerError("sql error"),
 						}
 					})
-			});
-
-		ready(user)
+			})
+		})
 	}
 }
 
@@ -117,7 +124,7 @@ where
 
 			database
 				.lock()
-				.expect("database mutex is poisoned")
+				.await
 				.execute(
 					"INSERT INTO RequestLogs VALUES (?1, ?2, ?3, ?4, NULL, ?5)",
 					rusqlite::params![log_id, endpoint, origin, username, timestamp]
@@ -128,7 +135,7 @@ where
 
 			database
 				.lock()
-				.expect("database mutex is poisoned")
+				.await
 				.execute(
 					"UPDATE RequestLogs SET status_code = ?1 WHERE log_id = ?2",
 					rusqlite::params![response.status().as_u16(), log_id]
@@ -172,7 +179,7 @@ where
 	}
 }
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> anyhow::Result<()> {
 	let hitl_dir = Path::new(&env::var("HOME")?)
 		.join(".hitl");
@@ -198,7 +205,7 @@ async fn main() -> anyhow::Result<()> {
 			.route("/hitl/test", web::post().to(routes::hitl::post_test))
 			.route("/admin/create-user", web::post().to(routes::admin::post_create_user))
 			.route("/admin/sql", web::post().to(routes::admin::post_sql))
-	}).bind(("127.0.0.1", 7400))?
+	}).bind(("127.0.0.1", 7200))?
 		.run()
 		.await?;
 

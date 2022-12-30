@@ -14,9 +14,7 @@ pub async fn post_create_user(database: web::Data<ThreadedDatabase>, request: Js
 
 	let salt = SaltString::generate(&mut OsRng).to_string();
 
-	database
-		.lock()
-		.unwrap()
+	database.lock().await
 		.execute(
 			"INSERT INTO Users VALUES (?1, NULL, ?2, ?3)",
 			rusqlite::params![&request.username, salt, request.is_admin as i32]
@@ -31,9 +29,7 @@ pub async fn post_sql(database: web::Data<ThreadedDatabase>, request: Json<SqlRe
 		return Err(error::ErrorUnauthorized("admin access required"));
 	}
 
-	let database = database
-		.lock()
-		.unwrap();
+	let database = database.lock().await;
 
 	let mut sql = database
 		.prepare(&request.raw_sql)

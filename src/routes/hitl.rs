@@ -26,9 +26,7 @@ pub async fn post_test(request: Json<TestRequest>, database: web::Data<ThreadedD
 			test_id = uuid::Uuid::new_v4()
 				.to_string();
 
-			database
-				.lock()
-				.unwrap()
+			database.lock().await
 				.query_row(
 					"SELECT EXISTS(SELECT 1 FROM Tests WHERE id = ?1)",
 					rusqlite::params![test_id],
@@ -50,17 +48,13 @@ pub async fn post_test(request: Json<TestRequest>, database: web::Data<ThreadedD
 		fs::write(&test_path, test_json)
 			.map_err(|_| error::ErrorInternalServerError("failed to write test to disk"))?;
 
-		database
-			.lock()
-			.unwrap()
+		database.lock().await
 			.execute("INSERT OR REPLACE INTO Tests VALUES (?1, ?2, (SELECT runs FROM Tests WHERE id = ?1))", rusqlite::params![test_id, test_path])
 			.map_err(|_| error::ErrorInternalServerError("sql error"))?;
 
 		test_description = description.clone();
 	} else {
-		let test_path: String = database
-			.lock()
-			.unwrap()
+		let test_path: String = database.lock().await
 			.query_row("SELECT file_path FROM Tests WHERE test_id = ?1", rusqlite::params![test_id], |row| row.get(0))
 			.map_err(|_| error::ErrorInternalServerError("sql error"))?;
 		
