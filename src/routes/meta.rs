@@ -9,9 +9,9 @@ use crate::{
 	ThreadedDatabase,
 };
 
-use actix_web::{error, Result, web::{self, Json, Query}};
+use actix_web::{error, Result, web::{Data, Json, Query}};
 
-pub async fn get_logs(request: Query<LogsRequest>, database: web::Data<ThreadedDatabase>, _user: User) -> Result<Json<LogsResponse>> {
+pub async fn get_logs(request: Query<LogsRequest>, database: Data<ThreadedDatabase>, _user: User) -> Result<Json<LogsResponse>> {
 	let database = database.lock().await;
 
 	let mut sql = database

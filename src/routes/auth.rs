@@ -1,10 +1,10 @@
-use actix_web::{error, web::{self, Json}, Result};
+use actix_web::{error, web::{Data, Json}, Result};
 use argon2::{Argon2, PasswordHasher};
 use crate::{ThreadedDatabase, protocol::{AuthRequest, AuthResponse}};
 use std::time::SystemTime;
 use uuid::Uuid;
 
-pub async fn post_auth(request: Json<AuthRequest>, database: web::Data<ThreadedDatabase>) -> Result<Json<AuthResponse>> {
+pub async fn post_auth(request: Json<AuthRequest>, database: Data<ThreadedDatabase>) -> Result<Json<AuthResponse>> {
 	let database = database.lock().await;
 
 	let (pass_hash, salt, is_admin): (Option<String>, String, bool) = database

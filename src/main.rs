@@ -5,7 +5,7 @@ mod middleware;
 mod protocol;
 mod routes;
 
-use actix_web::{App, HttpServer, web};
+use actix_web::{App, HttpServer, web::{self, Data}};
 use argon2::password_hash::SaltString;
 use forwarding::ForwardingAgent;
 use rand::rngs::OsRng;
@@ -36,8 +36,7 @@ async fn main() -> anyhow::Result<()> {
 	HttpServer::new(move || {
 		App::new()
 			.wrap(middleware::LoggingFactory::new(&threaded_database))
-			.app_data(web::Data::new(threaded_database.clone()))
-			.app_data(web::Data::new(forwarding_agent.clone()))
+			.app_data(Data::new(threaded_database.clone()))
 			.route("/auth", web::post().to(routes::auth::post_auth))
 			.route("/meta/logs", web::get().to(routes::meta::get_logs))
 			.route("/hitl/test", web::post().to(routes::hitl::post_test))

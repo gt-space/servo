@@ -9,10 +9,10 @@ use crate::{
 	ThreadedDatabase,
 };
 
-use actix_web::{error, Result, web::{self, Json}};
+use actix_web::{error, Result, web::{Data, Json}};
 use std::{env, fs};
 
-pub async fn post_test(request: Json<TestRequest>, database: web::Data<ThreadedDatabase>, _user: User) -> Result<Json<TestResponse>> {
+pub async fn post_test(request: Json<TestRequest>, database: Data<ThreadedDatabase>, _user: User) -> Result<Json<TestResponse>> {
 	if request.test_id.is_none() && request.test_description.is_none() {
 		return Err(error::ErrorBadRequest("request must contain 'test_id' and/or 'test_description'"));
 	}
