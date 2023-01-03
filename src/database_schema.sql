@@ -15,6 +15,12 @@ CREATE TABLE IF NOT EXISTS Sessions (
 	timestamp INTEGER NOT NULL CHECK(timestamp > 0)
 );
 
+CREATE TABLE IF NOT EXISTS ForwardingSessions (
+	session_id TEXT NOT NULL PRIMARY KEY,
+	target_address TEXT NOT NULL UNIQUE,
+	timestamp INTEGER NOT NULL CHECK(timestamp > 0)
+);
+
 CREATE TABLE IF NOT EXISTS Tests (
 	test_id TEXT NOT NULL PRIMARY KEY
 );
@@ -39,6 +45,26 @@ CREATE TABLE IF NOT EXISTS TestLogs (
 );
 
 -- TRIGGERS --
+CREATE TRIGGER IF NOT EXISTS update_forwarding
+AFTER UPDATE ON ForwardingSessions
+WHEN old.target_address != new.target_address
+BEGIN
+	SELECT forward_target(old.target_address, 0);
+	SELECT forward_target(new.target_address, 1);
+END;
+
+CREATE TRIGGER IF NOT EXISTS add_forwarding
+AFTER INSERT ON ForwardingSessions
+BEGIN
+	SELECT forward_target(new.target_address, 1);
+END;
+
+CREATE TRIGGER IF NOT EXISTS remove_forwarding
+AFTER DELETE ON ForwardingSessions
+BEGIN
+	SELECT forward_target(old.target_address, 0);
+END;
+
 CREATE TRIGGER IF NOT EXISTS no_update_request_logs
 BEFORE UPDATE ON RequestLogs
 WHEN old.status_code IS NOT NULL

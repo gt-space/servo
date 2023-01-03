@@ -448,22 +448,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fs-server"
-version = "0.1.0"
-dependencies = [
- "actix-web",
- "anyhow",
- "argon2",
- "base64",
- "rand",
- "rusqlite",
- "serde",
- "serde_json",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "futures-core"
 version = "0.3.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -952,6 +936,22 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "servo"
+version = "0.1.0"
+dependencies = [
+ "actix-web",
+ "anyhow",
+ "argon2",
+ "base64",
+ "rand",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
