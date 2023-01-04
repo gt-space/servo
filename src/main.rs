@@ -82,6 +82,8 @@ async fn main() -> anyhow::Result<()> {
 			.app_data(Data::new(database.clone()))
 			.route("/auth", web::post().to(routes::auth::post_auth))
 			.route("/meta/logs", web::get().to(routes::meta::get_logs))
+			.route("/data/forward", web::post().to(routes::data::start_forwarding))
+			.route("/data/renew-forward", web::post().to(routes::data::renew_forwarding))
 			.route("/hitl/test", web::post().to(routes::hitl::post_test))
 			.route("/admin/create-user", web::post().to(routes::admin::post_create_user))
 			.route("/admin/sql", web::post().to(routes::admin::post_sql))
