@@ -51,8 +51,6 @@ async fn main() -> anyhow::Result<()> {
 	})?;
 
 	database.execute_batch(include_str!("./database_schema.sql"))?;
-	database.execute("INSERT OR IGNORE INTO Users VALUES ('root', NULL, ?1, 1)", rusqlite::params![root_salt])?;
-	database.execute("DELETE FROM ForwardingSessions", [])?;
 
 	let threaded_database = Arc::new(Mutex::new(database));
 

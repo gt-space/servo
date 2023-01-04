@@ -83,3 +83,6 @@ BEFORE INSERT ON Sessions
 BEGIN
 	DELETE FROM Sessions WHERE username = new.username;
 END;
+
+-- COMMANDS --
+INSERT OR IGNORE INTO Users VALUES ('root', NULL, 'F3sBIV7QQVWq948F4heYhg', 1);
