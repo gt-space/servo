@@ -6,11 +6,9 @@ mod protocol;
 mod routes;
 
 use actix_web::{App, HttpServer, web::{self, Data}};
-use argon2::password_hash::SaltString;
 use forwarding::ForwardingAgent;
-use rand::rngs::OsRng;
 use rusqlite::{Connection as SqlConnection, functions::FunctionFlags};
-use std::{env, fs, path::Path, sync::Arc};
+use std::{env, fs, path::Path, sync::Arc, time::{self, Duration, SystemTime}};
 use tokio::sync::Mutex;
 
 pub type ThreadedDatabase = Arc<Mutex<rusqlite::Connection>>;
@@ -25,8 +23,6 @@ async fn main() -> anyhow::Result<()> {
 	}
 
 	let database = SqlConnection::open(hitl_dir.join("database.sqlite"))?;
-	let root_salt = SaltString::generate(&mut OsRng).to_string();
-
 	let forwarding_agent = Arc::new(ForwardingAgent::new());
 
 	database.create_scalar_function("forward_target", 2, FunctionFlags::SQLITE_UTF8, {
@@ -43,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
 			if should_add {
 				forwarding_agent.add_target(target_address);
 			} else {
-				forwarding_agent.remove_target(target_address);
+				forwarding_agent.remove_target(&target_address);
 			}
 
 			Ok(1)
@@ -51,15 +47,39 @@ async fn main() -> anyhow::Result<()> {
 	})?;
 
 	database.execute_batch(include_str!("./database_schema.sql"))?;
-
-	let threaded_database = Arc::new(Mutex::new(database));
+	let database = Arc::new(Mutex::new(database));
 
 	tokio::spawn(forwarding_agent.forward());
 
+	// Pruning dead forwarding targets every 10 secs
+	// Meant to avoid phantom targets that fail to close
+	tokio::spawn({
+		let weak_database = Arc::downgrade(&database);
+
+		async move {
+			while let Some(database) = weak_database.upgrade() {
+				let timestamp = SystemTime::now()
+					.duration_since(time::UNIX_EPOCH)
+					.expect("time is running backwards")
+					.as_secs();
+
+				database
+					.lock()
+					.await
+					.execute("DELETE FROM ForwardingTargets WHERE expiration <= ?1", rusqlite::params![timestamp])
+					.unwrap();
+
+				// Drop to release both the mutex lock and Arc reference to avoid holding over the sleep
+				drop(database);
+				tokio::time::sleep(Duration::from_secs(10)).await;
+			}
+		}
+	});
+
 	HttpServer::new(move || {
 		App::new()
-			.wrap(middleware::LoggingFactory::new(&threaded_database))
-			.app_data(Data::new(threaded_database.clone()))
+			.wrap(middleware::LoggingFactory::new(&database))
+			.app_data(Data::new(database.clone()))
 			.route("/auth", web::post().to(routes::auth::post_auth))
 			.route("/meta/logs", web::get().to(routes::meta::get_logs))
 			.route("/hitl/test", web::post().to(routes::hitl::post_test))

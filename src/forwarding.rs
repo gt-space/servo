@@ -24,11 +24,11 @@ impl ForwardingAgent {
 			.insert(address);
 	}
 
-	pub fn remove_target(&self, address: SocketAddr) {
+	pub fn remove_target(&self, address: &SocketAddr) {
 		self.targets
 			.lock()
 			.unwrap()
-			.remove(&address);
+			.remove(address);
 	}
 
 	pub fn forward(self: &Arc<Self>) -> impl Future<Output = io::Result<()>> {

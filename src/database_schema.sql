@@ -15,10 +15,10 @@ CREATE TABLE IF NOT EXISTS Sessions (
 	timestamp INTEGER NOT NULL CHECK(timestamp > 0)
 );
 
-CREATE TABLE IF NOT EXISTS ForwardingSessions (
-	session_id TEXT NOT NULL PRIMARY KEY,
-	target_address TEXT NOT NULL UNIQUE,
-	timestamp INTEGER NOT NULL CHECK(timestamp > 0)
+CREATE TABLE IF NOT EXISTS ForwardingTargets (
+	target_id TEXT NOT NULL PRIMARY KEY,
+	socket_address TEXT NOT NULL UNIQUE,
+	expiration INTEGER NOT NULL CHECK(expiration > 0)
 );
 
 CREATE TABLE IF NOT EXISTS Tests (
@@ -46,23 +46,23 @@ CREATE TABLE IF NOT EXISTS TestLogs (
 
 -- TRIGGERS --
 CREATE TRIGGER IF NOT EXISTS update_forwarding
-AFTER UPDATE ON ForwardingSessions
-WHEN old.target_address != new.target_address
+AFTER UPDATE ON ForwardingTargets
+WHEN old.socket_address != new.socket_address
 BEGIN
-	SELECT forward_target(old.target_address, 0);
-	SELECT forward_target(new.target_address, 1);
+	SELECT forward_target(old.socket_address, 0);
+	SELECT forward_target(new.socket_address, 1);
 END;
 
 CREATE TRIGGER IF NOT EXISTS add_forwarding
-AFTER INSERT ON ForwardingSessions
+AFTER INSERT ON ForwardingTargets
 BEGIN
-	SELECT forward_target(new.target_address, 1);
+	SELECT forward_target(new.socket_address, 1);
 END;
 
 CREATE TRIGGER IF NOT EXISTS remove_forwarding
-AFTER DELETE ON ForwardingSessions
+AFTER DELETE ON ForwardingTargets
 BEGIN
-	SELECT forward_target(old.target_address, 0);
+	SELECT forward_target(old.socket_address, 0);
 END;
 
 CREATE TRIGGER IF NOT EXISTS no_update_request_logs
