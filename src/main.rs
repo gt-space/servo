@@ -1,28 +1,19 @@
-mod ctrl;
-mod extractors;
-mod forwarding;
-mod middleware;
-mod protocol;
-mod routes;
-
 use actix_web::{App, HttpServer, web::{self, Data}};
-use forwarding::ForwardingAgent;
 use rusqlite::{Connection as SqlConnection, functions::FunctionFlags};
+use servo::{forwarding::{self, ForwardingAgent}, middleware, routes};
 use std::{env, fs, path::Path, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
-pub type Database = Arc<Mutex<rusqlite::Connection>>;
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-	let hitl_dir = Path::new(&env::var("HOME")?)
-		.join(".hitl");
+	let servo_dir = Path::new(&env::var("HOME")?)
+		.join(".servo");
 
-	if !hitl_dir.is_dir() {
-		fs::create_dir(&hitl_dir).unwrap();
+	if !servo_dir.is_dir() {
+		fs::create_dir(&servo_dir).unwrap();
 	}
 
-	let database = SqlConnection::open(hitl_dir.join("database.sqlite"))?;
+	let database = SqlConnection::open(servo_dir.join("database.sqlite"))?;
 	let forwarding_agent = Arc::new(ForwardingAgent::new());
 
 	database.create_scalar_function("forward_target", 2, FunctionFlags::SQLITE_UTF8, forwarding_agent.update_targets())?;
