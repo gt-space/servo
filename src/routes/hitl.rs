@@ -12,7 +12,7 @@ use crate::{
 use actix_web::{error, Result, web::{Data, Json}};
 use std::{env, fs};
 
-pub async fn post_test(request: Json<TestRequest>, database: Data<Database>, _user: User) -> Result<Json<TestResponse>> {
+pub async fn test_procedure(request: Json<TestRequest>, database: Data<Database>, _user: User) -> Result<Json<TestResponse>> {
 	if request.test_id.is_none() && request.test_description.is_none() {
 		return Err(error::ErrorBadRequest("request must contain 'test_id' and/or 'test_description'"));
 	}

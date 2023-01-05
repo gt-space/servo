@@ -4,7 +4,7 @@ use crate::{Database, protocol::{AuthRequest, AuthResponse}};
 use std::time::SystemTime;
 use uuid::Uuid;
 
-pub async fn post_auth(request: Json<AuthRequest>, database: Data<Database>) -> Result<Json<AuthResponse>> {
+pub async fn authenticate_user(request: Json<AuthRequest>, database: Data<Database>) -> Result<Json<AuthResponse>> {
 	let database = database.lock().await;
 
 	let (pass_hash, salt, is_admin): (Option<String>, String, bool) = database
