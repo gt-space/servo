@@ -3,12 +3,13 @@ use std::{
 	future::Future,
 	io,
 	net::SocketAddr,
-	sync::{Arc, Mutex},
+	sync::Arc,
 	time::{self, SystemTime},
 };
 
 use crate::Database;
-use tokio::{net::UdpSocket, time::{Duration, Instant, MissedTickBehavior}};
+use rusqlite::functions;
+use tokio::{net::UdpSocket, sync::Mutex, time::{Duration, Instant, MissedTickBehavior}};
 
 pub struct ForwardingAgent {
 	targets: Mutex<HashSet<SocketAddr>>,
@@ -19,18 +20,49 @@ impl ForwardingAgent {
 		ForwardingAgent { targets: Mutex::new(HashSet::new()) }
 	}
 
-	pub fn add_target(&self, address: SocketAddr) {
-		self.targets
-			.lock()
-			.unwrap()
-			.insert(address);
-	}
+	pub fn update_targets(self: &Arc<Self>) -> impl Fn(&functions::Context) -> rusqlite::Result<bool> {
+		// Notice that std::sync::Mutex is being used here rather than tokio::sync::Mutex. This is necessitated
+		// due to the closure's requirement that captured variables implement UnwindSafe, which for Mutexes, requires
+		// it to be poison-able. Tokio's Mutex is not poison-able, since this issue doesn't occur in async code. Yes,
+		// this means that the inner 'targets' is wrapped in a tokio Mutex and the outer ForwardingAgent is wrapped
+		// in a std Mutex, which is strange. But it's necessary to have these objects accessible in both multi-threaded
+		// (rusqlite's choice, not mine) and async code.
+		//
+		// tl;dr remove the Mutex and watch the compiler have a heart attack at the call site
+		let weak_self = std::sync::Mutex::new(Arc::downgrade(self));
 
-	pub fn remove_target(&self, address: &SocketAddr) {
-		self.targets
-			.lock()
-			.unwrap()
-			.remove(address);
+		move |context| {
+			let weak_self = weak_self
+				.lock()
+				.expect("forwarding agent mutex has been poisoned");
+
+			if let Some(strong_self) = weak_self.upgrade() {
+				let target_address = context
+					.get::<String>(0)?
+					.parse()
+					.unwrap();
+
+				let should_add = context.get::<bool>(1)?;
+
+				tokio::spawn(async move {
+					if should_add {
+						strong_self.targets
+							.lock()
+							.await
+							.insert(target_address);
+					} else {
+						strong_self.targets
+							.lock()
+							.await
+							.remove(&target_address);
+					}
+				});
+
+				Ok(true)
+			} else {
+				Err(rusqlite::Error::UserFunctionError("forwarding agent has been dropped".into()))
+			}
+		}
 	}
 
 	pub fn forward(self: &Arc<Self>) -> impl Future<Output = io::Result<()>> {
@@ -44,13 +76,11 @@ impl ForwardingAgent {
 			let mut frame_interval = tokio::time::interval(Duration::from_millis(15));
 
 			while let Some(strong_self) = weak_self.upgrade() {
-				// Block to constrain the lifetime of 'targets' so that it doesn't cross an await
-				// (this is a requirement of std::sync::Mutex)
-				'forward_frame: {
-					let targets = strong_self.targets.lock().unwrap();
+				'frame: {
+					let targets = strong_self.targets.lock().await;
 
 					if targets.len() == 0 {
-						break 'forward_frame;
+						break 'frame;
 					}
 
 					if let Ok((frame_size, _)) = socket.try_recv_from(&mut buffer) {
