@@ -1,12 +1,14 @@
-use crate::{
-	Database,
-	extractors::User,
-	protocol::{CreateUserRequest, SqlRequest, SqlResponse},
-};
-
 use actix_web::{error, web::{Data, Json}, Result, HttpResponse};
 use argon2::password_hash::{rand_core::OsRng, SaltString};
+use crate::{Database, extractors::User};
 use rusqlite::types::ValueRef;
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize)]
+pub struct CreateUserRequest {
+	pub username: String,
+	pub is_admin: bool,
+}
 
 pub async fn create_user(database: Data<Database>, request: Json<CreateUserRequest>, user: User) -> Result<HttpResponse> {
 	if !user.is_admin {
@@ -25,7 +27,18 @@ pub async fn create_user(database: Data<Database>, request: Json<CreateUserReque
 	Ok(HttpResponse::Ok().finish())
 }
 
-pub async fn execute_sql(database: Data<Database>, request: Json<SqlRequest>, user: User) -> Result<Json<SqlResponse>> {
+#[derive(Deserialize)]
+pub struct ExecuteSqlRequest {
+	pub raw_sql: String
+}
+
+#[derive(Serialize)]
+pub struct ExecuteSqlResponse {
+	pub column_names: Vec<String>,
+	pub rows: Vec<Vec<serde_json::Value>>,
+}
+
+pub async fn execute_sql(database: Data<Database>, request: Json<ExecuteSqlRequest>, user: User) -> Result<Json<ExecuteSqlResponse>> {
 	if !user.is_admin {
 		return Err(error::ErrorUnauthorized("admin access required"));
 	}
@@ -64,5 +77,5 @@ pub async fn execute_sql(database: Data<Database>, request: Json<SqlRequest>, us
 		.collect::<std::result::Result<Vec<_>, _>>()
 		.unwrap();
 
-	Ok(Json(SqlResponse { column_names, rows: rows }))
+	Ok(Json(ExecuteSqlResponse { column_names, rows: rows }))
 }

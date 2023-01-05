@@ -1,8 +1,21 @@
 use actix_web::{error, web::{Data, Json}, Result};
 use argon2::{Argon2, PasswordHasher};
-use crate::{Database, protocol::{AuthRequest, AuthResponse}};
+use crate::Database;
+use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use uuid::Uuid;
+
+#[derive(Deserialize)]
+pub struct AuthRequest {
+	pub username: String,
+	pub password: String,
+}
+
+#[derive(Serialize)]
+pub struct AuthResponse {
+	pub is_admin: bool,
+	pub session_id: String,
+}
 
 pub async fn authenticate_user(request: Json<AuthRequest>, database: Data<Database>) -> Result<Json<AuthResponse>> {
 	let database = database.lock().await;
