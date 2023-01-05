@@ -37,26 +37,26 @@ pub struct TestLog {
 }
 
 impl Display for TestLog {
-		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-			let color_code = match self.status {
-				TestStatus::InProgress => "\x1b[34m",
-				TestStatus::Fail => "\x1b[31m",
-				TestStatus::Pass => "\x1b[32m",
-			};
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let color_code = match self.status {
+			TestStatus::InProgress => "\x1b[34m",
+			TestStatus::Fail => "\x1b[31m",
+			TestStatus::Pass => "\x1b[32m",
+		};
 
-			let status = match self.status {
-				TestStatus::InProgress => "....",
-				TestStatus::Fail => "FAIL",
-				TestStatus::Pass => "PASS",
-			};
+		let status = match self.status {
+			TestStatus::InProgress => "....",
+			TestStatus::Fail => "FAIL",
+			TestStatus::Pass => "PASS",
+		};
 
-			let end_time = self.end_time.unwrap_or(-1);
-			let message = self.message
-				.as_deref()
-				.unwrap_or("working on it...");
+		let end_time = self.end_time.unwrap_or(-1);
+		let message = self.message
+			.as_deref()
+			.unwrap_or("working on it...");
 
-			write!(f, "{}[{}] ({} - {}) {} : {}", color_code, status, self.start_time, end_time, self.initiator, message)
-		}
+		write!(f, "{}[{}] ({} - {}) {} : {}", color_code, status, self.start_time, end_time, self.initiator, message)
+	}
 }
 
 #[derive(Clone, Serialize, Deserialize)]

@@ -1,14 +1,14 @@
 use crate::{
+	Database,
 	extractors::User,
 	protocol::{CreateUserRequest, SqlRequest, SqlResponse},
-	ThreadedDatabase,
 };
 
 use actix_web::{error, web::{Data, Json}, Result, HttpResponse};
 use argon2::password_hash::{rand_core::OsRng, SaltString};
 use rusqlite::types::ValueRef;
 
-pub async fn post_create_user(database: Data<ThreadedDatabase>, request: Json<CreateUserRequest>, user: User) -> Result<HttpResponse> {
+pub async fn post_create_user(database: Data<Database>, request: Json<CreateUserRequest>, user: User) -> Result<HttpResponse> {
 	if !user.is_admin {
 		return Err(error::ErrorUnauthorized("admin access required"));
 	}
@@ -25,7 +25,7 @@ pub async fn post_create_user(database: Data<ThreadedDatabase>, request: Json<Cr
 	Ok(HttpResponse::Ok().finish())
 }
 
-pub async fn post_sql(database: Data<ThreadedDatabase>, request: Json<SqlRequest>, user: User) -> Result<Json<SqlResponse>> {
+pub async fn post_sql(database: Data<Database>, request: Json<SqlRequest>, user: User) -> Result<Json<SqlResponse>> {
 	if !user.is_admin {
 		return Err(error::ErrorUnauthorized("admin access required"));
 	}

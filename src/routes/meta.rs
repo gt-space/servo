@@ -1,4 +1,5 @@
 use crate::{
+	Database,
 	extractors::User,
 	protocol::{
 		LogsRequest,
@@ -6,12 +7,11 @@ use crate::{
 		TestLog,
 		TestStatus,
 	},
-	ThreadedDatabase,
 };
 
 use actix_web::{error, Result, web::{Data, Json, Query}};
 
-pub async fn get_logs(request: Query<LogsRequest>, database: Data<ThreadedDatabase>, _user: User) -> Result<Json<LogsResponse>> {
+pub async fn get_logs(request: Query<LogsRequest>, database: Data<Database>, _user: User) -> Result<Json<LogsResponse>> {
 	let database = database.lock().await;
 
 	let mut sql = database

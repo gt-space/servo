@@ -1,5 +1,5 @@
+mod ctrl;
 mod extractors;
-mod hitl;
 mod forwarding;
 mod middleware;
 mod protocol;
@@ -8,10 +8,10 @@ mod routes;
 use actix_web::{App, HttpServer, web::{self, Data}};
 use forwarding::ForwardingAgent;
 use rusqlite::{Connection as SqlConnection, functions::FunctionFlags};
-use std::{env, fs, path::Path, sync::Arc, time::{self, Duration, SystemTime}};
+use std::{env, fs, path::Path, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
-pub type ThreadedDatabase = Arc<Mutex<rusqlite::Connection>>;
+pub type Database = Arc<Mutex<rusqlite::Connection>>;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -50,31 +50,7 @@ async fn main() -> anyhow::Result<()> {
 	let database = Arc::new(Mutex::new(database));
 
 	tokio::spawn(forwarding_agent.forward());
-
-	// Pruning dead forwarding targets every 10 secs
-	// Meant to avoid phantom targets that fail to close
-	tokio::spawn({
-		let weak_database = Arc::downgrade(&database);
-
-		async move {
-			while let Some(database) = weak_database.upgrade() {
-				let timestamp = SystemTime::now()
-					.duration_since(time::UNIX_EPOCH)
-					.expect("time is running backwards")
-					.as_secs();
-
-				database
-					.lock()
-					.await
-					.execute("DELETE FROM ForwardingTargets WHERE expiration <= ?1", rusqlite::params![timestamp])
-					.unwrap();
-
-				// Drop to release both the mutex lock and Arc reference to avoid holding over the sleep
-				drop(database);
-				tokio::time::sleep(Duration::from_secs(10)).await;
-			}
-		}
-	});
+	tokio::spawn(forwarding::prune_dead_targets(&database, Duration::from_secs(10)));
 
 	HttpServer::new(move || {
 		App::new()

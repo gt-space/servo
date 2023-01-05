@@ -1,5 +1,5 @@
 use actix_web::{FromRequest, error, http::header, HttpRequest, web::Data};
-use crate::ThreadedDatabase;
+use crate::Database;
 use std::{future::Future, pin::Pin};
 
 pub struct User {
@@ -12,7 +12,7 @@ impl FromRequest for User {
 	type Future = Pin<Box<dyn Future<Output = Result<Self, Self::Error>>>>;
 
 	fn from_request(request: &HttpRequest, _payload: &mut actix_web::dev::Payload) -> Self::Future {
-		let database = request.app_data::<Data<ThreadedDatabase>>()
+		let database = request.app_data::<Data<Database>>()
 			.expect("database not included in app data")
 			.clone();
 

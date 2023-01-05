@@ -1,5 +1,5 @@
 use actix_web::{dev::PeerAddr, error, HttpResponse, Result, web::{Data, Json}};
-use crate::{extractors::User, ThreadedDatabase};
+use crate::{Database, extractors::User};
 use serde::{Deserialize, Serialize};
 use std::{time::{self, SystemTime, Duration}, net::SocketAddr, ops::Add};
 use uuid::Uuid;
@@ -17,7 +17,7 @@ pub struct StartForwardingResponse {
 	seconds_to_expiration: u64,
 }
 
-pub async fn start_forwarding(database: Data<ThreadedDatabase>, request: Json<StartForwardingRequest>, peer_address: PeerAddr, _user: User) -> Result<Json<StartForwardingResponse>> {
+pub async fn start_forwarding(database: Data<Database>, request: Json<StartForwardingRequest>, peer_address: PeerAddr, _user: User) -> Result<Json<StartForwardingResponse>> {
 	let database = database.lock().await;
 
 	let target_id = Uuid::new_v4().to_string();
@@ -54,7 +54,7 @@ pub struct RenewForwardingRequest {
 	target_id: String,
 }
 
-pub async fn renew_forwarding(database: Data<ThreadedDatabase>, request: Json<RenewForwardingRequest>, peer_address: PeerAddr, _user: User) -> Result<HttpResponse> {
+pub async fn renew_forwarding(database: Data<Database>, request: Json<RenewForwardingRequest>, peer_address: PeerAddr, _user: User) -> Result<HttpResponse> {
 	let database = database.lock().await;
 
 	let check_ip = database

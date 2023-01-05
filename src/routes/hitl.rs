@@ -1,18 +1,18 @@
 use crate::{
+	ctrl,
+	Database,
 	extractors::User,
-	hitl,
 	protocol::{
 		TestRequest,
 		TestResponse,
 		TestDescription,
 	},
-	ThreadedDatabase,
 };
 
 use actix_web::{error, Result, web::{Data, Json}};
 use std::{env, fs};
 
-pub async fn post_test(request: Json<TestRequest>, database: Data<ThreadedDatabase>, _user: User) -> Result<Json<TestResponse>> {
+pub async fn post_test(request: Json<TestRequest>, database: Data<Database>, _user: User) -> Result<Json<TestResponse>> {
 	if request.test_id.is_none() && request.test_description.is_none() {
 		return Err(error::ErrorBadRequest("request must contain 'test_id' and/or 'test_description'"));
 	}
@@ -65,7 +65,7 @@ pub async fn post_test(request: Json<TestRequest>, database: Data<ThreadedDataba
 			.map_err(|_| error::ErrorInternalServerError("failed to parse test file"))?;
 	}
 
-	let outcome = hitl::testing::run_test(&test_description);
+	let outcome = ctrl::testing::run_test(&test_description);
 
 	Ok(Json(TestResponse))
 }

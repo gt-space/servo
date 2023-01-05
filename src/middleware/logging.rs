@@ -1,9 +1,9 @@
 use actix_web::{dev::{Service, ServiceRequest, ServiceResponse, Transform}, error};
-use crate::{extractors::User, ThreadedDatabase};
+use crate::{Database, extractors::User};
 use std::{future::{Future, ready, Ready}, pin::Pin, rc::Rc, time::{self, SystemTime}};
 
 pub struct LoggingMiddleware<S> {
-	database: ThreadedDatabase,
+	database: Database,
 	service: Rc<S>,
 }
 
@@ -72,11 +72,11 @@ where
 }
 
 pub struct LoggingFactory {
-	database: ThreadedDatabase
+	database: Database
 }
 
 impl LoggingFactory {
-	pub fn new(database: &ThreadedDatabase) -> Self {
+	pub fn new(database: &Database) -> Self {
 		LoggingFactory {
 			database: database.clone()
 		}
