@@ -21,10 +21,6 @@ CREATE TABLE IF NOT EXISTS ForwardingTargets (
 	expiration INTEGER NOT NULL CHECK(expiration > 0)
 );
 
-CREATE TABLE IF NOT EXISTS Tests (
-	test_id TEXT NOT NULL PRIMARY KEY
-);
-
 CREATE TABLE IF NOT EXISTS RequestLogs (
 	log_id TEXT NOT NULL PRIMARY KEY,
 	endpoint TEXT NOT NULL,
@@ -32,16 +28,6 @@ CREATE TABLE IF NOT EXISTS RequestLogs (
 	username TEXT REFERENCES Users(username),
 	status_code INTEGER,
 	timestamp INTEGER NOT NULL CHECK(timestamp > 0)
-);
-
-CREATE TABLE IF NOT EXISTS TestLogs (
-	log_id TEXT NOT NULL PRIMARY KEY,
-	test_id TEXT NOT NULL REFERENCES Tests(test_id),
-	initiator TEXT NOT NULL REFERENCES Users(username),
-	start_time INTEGER NOT NULL CHECK(start_time > 0),
-	end_time INTEGER CHECK(end_time >= start_time),
-	did_pass INTEGER CHECK(did_pass BETWEEN 0 AND 1),
-	message TEXT
 );
 
 -- TRIGGERS --
