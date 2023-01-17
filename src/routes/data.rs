@@ -6,18 +6,32 @@ use uuid::Uuid;
 
 const TARGET_LIFESPAN: Duration = Duration::from_secs(600);
 
-#[derive(Deserialize)]
+#[allow(missing_docs)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StartForwardingRequest {
-	port: u16
+	pub port: u16
 }
 
-#[derive(Serialize)]
+#[allow(missing_docs)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StartForwardingResponse {
-	target_id: String,
-	seconds_to_expiration: u64,
+	pub target_id: String,
+	pub seconds_to_expiration: u64,
 }
 
-pub async fn start_forwarding(database: Data<Database>, request: Json<StartForwardingRequest>, peer_address: PeerAddr, _user: User) -> Result<Json<StartForwardingResponse>> {
+/// A route function which starts a forwarding session with the sender of the
+/// request at the port specified.
+/// 
+/// Must be called from the machine which will be forwarded to. Forwarding
+/// targets die after a default of 1 minute, so the API route corresponding to
+/// `data::renew_forwarding` must be called before session death to maintain
+/// the target.
+pub async fn start_forwarding(
+	database: Data<Database>,
+	request: Json<StartForwardingRequest>,
+	peer_address: PeerAddr,
+	_user: User
+) -> Result<Json<StartForwardingResponse>> {
 	let database = database.lock().await;
 
 	let target_id = Uuid::new_v4().to_string();
@@ -49,12 +63,26 @@ pub async fn start_forwarding(database: Data<Database>, request: Json<StartForwa
 	}))
 }
 
-#[derive(Deserialize)]
+#[allow(missing_docs)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RenewForwardingRequest {
-	target_id: String,
+	pub target_id: String,
 }
 
-pub async fn renew_forwarding(database: Data<Database>, request: Json<RenewForwardingRequest>, peer_address: PeerAddr, _user: User) -> Result<HttpResponse> {
+#[allow(missing_docs)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RenewForardingResponse;
+
+/// A route function which renews a forwarding session with the given target ID.
+/// 
+/// Must be requested from the machine with the same IP address as the
+/// forwarding target being renewed. This route will not initiate a session.
+pub async fn renew_forwarding(
+	database: Data<Database>,
+	request: Json<RenewForwardingRequest>,
+	peer_address: PeerAddr,
+	_user: User
+) -> Result<HttpResponse> {
 	let database = database.lock().await;
 
 	let check_ip = database

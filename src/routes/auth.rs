@@ -5,18 +5,21 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use uuid::Uuid;
 
-#[derive(Deserialize)]
+#[allow(missing_docs)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AuthRequest {
 	pub username: String,
 	pub password: String,
 }
 
-#[derive(Serialize)]
+#[allow(missing_docs)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AuthResponse {
 	pub is_admin: bool,
 	pub session_id: String,
 }
 
+/// Authenicates a user given their username and password by assigning them a session and returning a session ID
 pub async fn authenticate_user(request: Json<AuthRequest>, database: Data<Database>) -> Result<Json<AuthResponse>> {
 	let database = database.lock().await;
 

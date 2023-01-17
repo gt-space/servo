@@ -2,8 +2,12 @@ use actix_web::{FromRequest, error, http::header, HttpRequest, web::Data};
 use crate::Database;
 use std::{future::Future, pin::Pin};
 
+/// Contains the necessary information to identify a user and their privelages
 pub struct User {
+	/// The username uniquely identifying the User
 	pub username: String,
+	
+	/// Indicates whether the User has administrator privelages
 	pub is_admin: bool,
 }
 

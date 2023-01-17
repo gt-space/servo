@@ -71,11 +71,13 @@ where
 	}
 }
 
+/// A factory that creates instances of `LoggingMiddleware` to be used in the server
 pub struct LoggingFactory {
 	database: Database
 }
 
 impl LoggingFactory {
+	/// Creates a new `LoggerFactory` given a reference to a `Database` (which it clones) 
 	pub fn new(database: &Database) -> Self {
 		LoggingFactory {
 			database: database.clone()

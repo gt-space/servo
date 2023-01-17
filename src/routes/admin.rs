@@ -1,16 +1,22 @@
-use actix_web::{error, web::{Data, Json}, Result, HttpResponse};
+use actix_web::{error, web::{Data, Json}, Result};
 use argon2::password_hash::{rand_core::OsRng, SaltString};
 use crate::{Database, extractors::User};
 use rusqlite::types::ValueRef;
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize)]
+#[allow(missing_docs)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct CreateUserRequest {
 	pub username: String,
 	pub is_admin: bool,
 }
 
-pub async fn create_user(database: Data<Database>, request: Json<CreateUserRequest>, user: User) -> Result<HttpResponse> {
+#[allow(missing_docs)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CreateUserResponse;
+
+/// A route function which creates a user without a password
+pub async fn create_user(database: Data<Database>, request: Json<CreateUserRequest>, user: User) -> Result<Json<CreateUserResponse>> {
 	if !user.is_admin {
 		return Err(error::ErrorUnauthorized("admin access required"));
 	}
@@ -24,20 +30,23 @@ pub async fn create_user(database: Data<Database>, request: Json<CreateUserReque
 		)
 		.map_err(|_| error::ErrorInternalServerError("sql error"))?;
  
-	Ok(HttpResponse::Ok().finish())
+	Ok(Json(CreateUserResponse))
 }
 
-#[derive(Deserialize)]
+#[allow(missing_docs)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ExecuteSqlRequest {
 	pub raw_sql: String
 }
 
-#[derive(Serialize)]
+#[allow(missing_docs)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ExecuteSqlResponse {
 	pub column_names: Vec<String>,
 	pub rows: Vec<Vec<serde_json::Value>>,
 }
 
+/// A route function which executes an arbitrary SQL query
 pub async fn execute_sql(database: Data<Database>, request: Json<ExecuteSqlRequest>, user: User) -> Result<Json<ExecuteSqlResponse>> {
 	if !user.is_admin {
 		return Err(error::ErrorUnauthorized("admin access required"));

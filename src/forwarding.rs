@@ -9,17 +9,50 @@ use std::{
 
 use crate::Database;
 use rusqlite::functions;
-use tokio::{net::UdpSocket, sync::Mutex, time::{Duration, Instant, MissedTickBehavior}};
+use tokio::{net::UdpSocket, sync::Mutex, time::{Duration, MissedTickBehavior}};
 
+/// A struct which can forward messages incoming on a single UDP port to multiple external sockets 
 pub struct ForwardingAgent {
 	targets: Mutex<HashSet<SocketAddr>>,
+	frame_duration: Duration,
 }
 
 impl ForwardingAgent {
+	/// Constructs a new ForwardingAgent with a 15ms frame duration.
 	pub fn new() -> Self {
-		ForwardingAgent { targets: Mutex::new(HashSet::new()) }
+		ForwardingAgent {
+			targets: Mutex::new(HashSet::new()),
+			frame_duration: Duration::from_millis(15),
+		}
 	}
 
+	/// Returns the current duration of one fowarding frame (default 15ms).
+	pub fn frame_duration(&self) -> Duration {
+		return self.frame_duration.clone();
+	}
+
+	/// Sets the duration of a single forwarding frame (default 15ms).
+	/// This method must be called before `ForwardingAgent::forward` to have the intended effect.
+	pub fn set_frame_duration(&mut self, frame_duration: Duration) {
+		self.frame_duration = frame_duration;
+	}
+
+	/// Constructs a closure which can be passed to `rusqlite::Connection::create_scalar_function` to asynchronously
+	/// update the `ForwardingAgent`'s targets based on what is stored in a database.
+	/// In SQLite queries, this function can be named anything but must take in two parameters:
+	/// 1) A string which is the socket address of the target (ex. '127.0.0.1:32000')
+	/// 2) 0 for removal of the target, or 1 for inclusion of the target
+	/// 
+	/// This method must be called on a `Arc<ForwardingAgent>` because it constructs a `Weak<ForwardingAgent>` to be
+	/// used in the closure. This satisfies the borrow checker while ensuring no memory leaks from undying references.
+	/// 
+	/// # Example
+	/// 
+	/// ```
+	/// let database = rusqlite::Connection::open_in_memory()?;
+	/// database.create_scalar_function("forward_target", 2, FunctionFlags::SQLITE_UTF8, forwarding_agent.update_targets())?;
+	/// ```
+	/// 
 	pub fn update_targets(self: &Arc<Self>) -> impl Fn(&functions::Context) -> rusqlite::Result<bool> {
 		// Notice that std::sync::Mutex is being used here rather than tokio::sync::Mutex. This is necessitated
 		// due to the closure's requirement that captured variables implement UnwindSafe, which for Mutexes, requires
@@ -65,15 +98,26 @@ impl ForwardingAgent {
 		}
 	}
 
+	/// Continuously forwards incoming UDP datagrams on port 7201 to all available targets. Targets are updated indirectly
+	/// by a database using the `ForwardingAgent::update_targets` method.
+	/// 
+	/// # Example
+	/// 
+	/// ```
+	/// let forwarding_agent = ForwardingAgent::new();
+	/// tokio::spawn(forwarding_agent.forward());
+	/// ```
+	/// 
 	pub fn forward(self: &Arc<Self>) -> impl Future<Output = io::Result<()>> {
 		let weak_self = Arc::downgrade(self);
+		let frame_duration = self.frame_duration;
 
 		async move {
 			let socket = UdpSocket::bind("127.0.0.1:7201").await?;
 			let mut buffer = [0_u8; 512];
 
 			// 15ms frames is ~60 updates / sec; adjust if necessary
-			let mut frame_interval = tokio::time::interval(Duration::from_millis(15));
+			let mut frame_interval = tokio::time::interval(frame_duration);
 
 			while let Some(strong_self) = weak_self.upgrade() {
 				'frame: {
@@ -106,7 +150,7 @@ impl ForwardingAgent {
 /// point it stops execution. This function is not intended to be used with `.await`, as it will
 /// cause the current context to freeze.
 /// 
-/// # Warnings
+/// # Improper Usage
 /// 
 /// This function is not intended to be used with `.await`, as it will cause the current context
 /// to freeze until the database is dropped. Additionally, if a reference to the database is held
