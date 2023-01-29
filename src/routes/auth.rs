@@ -1,8 +1,9 @@
 use actix_web::{error, web::{Data, Json}, Result};
 use argon2::{Argon2, PasswordHasher};
+use tokio::time::MissedTickBehavior;
 use crate::Database;
 use serde::{Deserialize, Serialize};
-use std::time::SystemTime;
+use std::{time::{SystemTime, Duration, self}, sync::Arc, future::Future};
 use uuid::Uuid;
 
 #[allow(missing_docs)]
@@ -19,7 +20,11 @@ pub struct AuthResponse {
 	pub session_id: String,
 }
 
-/// Authenicates a user given their username and password by assigning them a session and returning a session ID
+/// Authenticates a user given their username and password by assigning them a session and returning a session ID.
+/// 
+/// The session will be valid for 15 minutes unless a new request is sent 5 minutes before expiration. In other words, if no activity occurs for 15 minutes, then the session will deactivate.
+/// However, if some activity occurs (sending a request to any authenticated endpoint) then the session will automatically update.
+
 pub async fn authenticate_user(request: Json<AuthRequest>, database: Data<Database>) -> Result<Json<AuthResponse>> {
 	let database = database.lock().await;
 
@@ -59,4 +64,51 @@ pub async fn authenticate_user(request: Json<AuthRequest>, database: Data<Databa
 		.map_err(|_| error::ErrorInternalServerError("sql error"))?;
 
 	Ok(Json(AuthResponse { session_id, is_admin }))
+}
+
+/// Periodically prunes sessions if they are more than 15 minutes old 
+/// and makes them inactive forcing the user to re-authenticate
+/// 
+/// This function takes in a `&Arc<Mutex<SqlConnection>>` which is then downgraded to a weak
+/// reference to the database. The returned Future loops until the database is dropped, at which
+/// point it stops execution. This function is not intended to be used with `.await`, as it will
+/// cause the current context to freeze.
+/// 
+/// # Improper Usage
+/// 
+/// This function is not intended to be used with `.await`, as it will cause the current context
+/// to freeze until the database is dropped. Additionally, if a reference to the database is held
+/// in the same context as the returned Future is executing, the program will not halt, as the database
+/// will never be dropped since its strong reference count will never reach zero.
+/// 
+/// # Example
+/// 
+/// ```
+/// // Prunes dead targets in the background every 10 seconds
+/// tokio::spawn(routes::auth::prune_sessions(&database, Duration::from_secs(300)));
+/// ```
+
+pub fn prune_sessions(database: &Database, period: Duration) -> impl Future<Output = ()> {
+	let weak_database = Arc::downgrade(database);
+
+	async move {
+		let mut prune_interval = tokio::time::interval(period);
+		prune_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+		while let Some(database) = weak_database.upgrade() {
+			let timestamp = SystemTime::now()
+				.duration_since(time::UNIX_EPOCH)
+				.expect("time is running backwards")
+				.as_secs();
+
+			database
+				.lock()
+				.await
+				.execute("DELETE FROM Sessions WHERE ?1 - timestamp >= 900", rusqlite::params![timestamp])
+				.unwrap();
+
+			drop(database);
+			prune_interval.tick().await;
+		}
+	}
 }

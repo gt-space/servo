@@ -1,6 +1,6 @@
 use actix_web::{FromRequest, error, http::header, HttpRequest, web::Data};
-use crate::Database;
-use std::{future::Future, pin::Pin};
+use crate::{Database};
+use std::{future::Future, pin::Pin, time::{SystemTime, self}};
 
 /// Contains the necessary information to identify a user and their privelages
 pub struct User {
@@ -34,21 +34,42 @@ impl FromRequest for User {
 				.await;
 
 			session_id.and_then(|session_id| {
-				database
+				let (user, timestamp) = database
 					.query_row("
-						SELECT S.username, U.is_admin
+						SELECT S.username, U.is_admin, S.timestamp
 						FROM Sessions AS S
 						INNER JOIN Users AS U
 						ON U.username = S.username
 						WHERE S.session_id = ?1",
 						rusqlite::params![session_id],
-						|row| Ok(User { username: row.get(0)?, is_admin: row.get(1)? }))
+						|row| Ok((User { username: row.get(0)?, is_admin: row.get(1)? }, row.get::<_, u64>(2)?)) )
 					.map_err(|error| {
 						match error {
 							rusqlite::Error::QueryReturnedNoRows => error::ErrorUnauthorized("no session found"),
 							_ => error::ErrorInternalServerError("sql error"),
 						}
-					})
+					})?;
+
+				let current_time = SystemTime::now()
+								.duration_since(time::UNIX_EPOCH)
+								.expect("time is running backwards")
+								.as_secs();
+
+				if (current_time - timestamp) >= 600 {
+					database
+					.execute("
+						UPDATE Sessions
+						SET timestamp = ?1
+						WHERE username = ?2",
+						rusqlite::params![current_time, user.username])
+					.map_err(|error| {
+						match error {
+							_ => error::ErrorInternalServerError("Internal SQL error on trying to update session timestamp"),
+						}
+					})?;
+				}
+				
+				Ok(user)
 			})
 		})
 	}
