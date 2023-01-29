@@ -23,6 +23,7 @@ async fn main() -> anyhow::Result<()> {
 
 	tokio::spawn(forwarding_agent.forward());
 	tokio::spawn(forwarding::prune_dead_targets(&database, Duration::from_secs(10)));
+	tokio::spawn(routes::auth::prune_sessions(&database, Duration::from_secs(60)));
 
 	HttpServer::new(move || {
 		App::new()
