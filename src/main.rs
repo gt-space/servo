@@ -6,8 +6,13 @@ use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-	let servo_dir = Path::new(&env::var("HOME")?)
-		.join(".servo");
+	#[cfg(target_family = "windows")]
+	let home_path = &env::var("USERPROFILE")?;
+
+	#[cfg(target_family = "unix")]
+	let home_path = &env::var("HOME")?;
+
+	let servo_dir = Path::new(home_path).join(".servo");
 
 	if !servo_dir.is_dir() {
 		fs::create_dir(&servo_dir).unwrap();
