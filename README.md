@@ -52,6 +52,9 @@ We also want to steadily introduce unit testing across YJSP software projects, i
 
 Big thanks to the developers hard at work making this project a reality:
 
-* **Jeff Shelton** (RE): [@jshelton44](https://github-research.gatech.edu/jshelton44)
+* **Abhinav Vemulapalli**: [@avemulapalli7](https://github-research.gatech.edu/avemulapalli7)
+* **Jahan Randeria**: [@jranderia3](https://github-research.gatech.edu/jranderia3)
+* **Ryan Otsuka**: [@rotsuka6](https://github-research.gatech.edu/rotsuka6)
+* **Shirley Benedict**: [@sbenedict6](https://github-research.gatech.edu/sbenedict6)
 
-_more to be added later today..._
+* **Jeff Shelton** (RE): [@jshelton44](https://github-research.gatech.edu/jshelton44)
