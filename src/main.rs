@@ -6,6 +6,8 @@ use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+	env_logger::init();
+
 	#[cfg(target_family = "windows")]
 	let home_path = &env::var("USERPROFILE")?;
 
@@ -27,6 +29,7 @@ async fn main() -> anyhow::Result<()> {
 	let database = Arc::new(Mutex::new(database));
 
 	tokio::spawn(forwarding_agent.forward());
+	tokio::spawn(forwarding_agent.log_frames(&database));
 	tokio::spawn(forwarding::prune_dead_targets(&database, Duration::from_secs(10)));
 	tokio::spawn(routes::auth::prune_sessions(&database, Duration::from_secs(60)));
 
