@@ -212,7 +212,7 @@ impl ForwardingAgent {
 		let weak_self = Arc::downgrade(self);
 
 		async move {
-			let socket = UdpSocket::bind("127.0.0.1:7201").await?;
+			let socket = UdpSocket::bind("0.0.0.0:7201").await?;
 
 			let mut frame_buffer = vec![0; 521];
 
