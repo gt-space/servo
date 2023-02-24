@@ -31,7 +31,14 @@ async fn main() -> anyhow::Result<()> {
 	tokio::spawn(routes::auth::prune_sessions(&database, Duration::from_secs(60)));
 
 	HttpServer::new(move || {
+		let cors = Cors::default()
+			.allow_any_header()
+			.allow_any_method()
+			.allow_any_origin()
+			.supports_credentials();
+
 		App::new()
+			.wrap(cors)
 			.wrap(middleware::LoggingFactory::new(&database))
 			.app_data(Data::new(database.clone()))
 			.route("/auth", web::post().to(routes::auth::authenticate_user))
