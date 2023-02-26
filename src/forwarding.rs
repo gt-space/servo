@@ -43,6 +43,10 @@ impl ForwardingAgent {
 
 	/// Sets the duration after which a log must be committed to the database (default 500ms).
 	/// This method must be called before `ForwardingAgent::log_frames` to have the intended effect.
+	///
+	/// Method will panic if log duration is set to less than 5ms, as it would cause logs to be
+	/// unnecessarily small, causing compression results to be poor and possibly making the
+	/// database fall behind.
 	pub fn set_log_after_duration(&mut self, duration: Duration) {
 		if duration.as_millis() < 5 {
 			error!("log_after_duration cannot be set < 5ms");
@@ -60,6 +64,10 @@ impl ForwardingAgent {
 
 	/// Sets the size (in bytes) after which a log must be committed to the database (default 1MB).
 	/// This method must be called before `ForwardingAgent::log_frames` to have the intended effect.
+	///
+	/// Method will panic if log size is set to less than 4KB, as compression under of blocks under
+	/// 4KB yields poor results. It would also cause performance issues on targets with slower
+	/// file IO, possibly causing the database to permanently fall behind and crash.
 	pub fn set_log_after_size(&mut self, size: usize) {
 		if size < 4_000 {
 			error!("log_after_size cannot be set < 4KB");
