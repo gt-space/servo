@@ -7,34 +7,74 @@ use std::{
 	time::{self, SystemTime},
 };
 
+use tokio::{
+	net::UdpSocket,
+	sync::{Mutex, broadcast::{self, Sender}},
+	time::{Duration, MissedTickBehavior, Instant}
+};
+
 use crate::Database;
+use log::{error, warn};
 use rusqlite::functions;
-use tokio::{net::UdpSocket, sync::Mutex, time::{Duration, MissedTickBehavior}};
 
 /// A struct which can forward messages incoming on a single UDP port to multiple external sockets 
 pub struct ForwardingAgent {
 	targets: Mutex<HashSet<SocketAddr>>,
-	frame_duration: Duration,
+	log_after_duration: Duration,
+	log_after_size: usize,
+	frame_sender: Sender<(u64, Vec<u8>)>,
 }
 
 impl ForwardingAgent {
-	/// Constructs a new ForwardingAgent with a 15ms frame duration.
+	/// Constructs a new ForwardingAgent with a 1MB log-after size and 500ms log-after duration.
 	pub fn new() -> Self {
 		ForwardingAgent {
 			targets: Mutex::new(HashSet::new()),
-			frame_duration: Duration::from_millis(15),
+			log_after_duration: Duration::from_millis(500),
+			log_after_size: 1_000_000, // 1MB
+			frame_sender: broadcast::channel(20).0,
 		}
 	}
 
-	/// Returns the current duration of one fowarding frame (default 15ms).
-	pub fn frame_duration(&self) -> Duration {
-		return self.frame_duration.clone();
+	/// Returns the current duration after which a log must be committed to the database (default 500ms).
+	pub fn log_after_duration(&self) -> Duration {
+		return self.log_after_duration.clone();
 	}
 
-	/// Sets the duration of a single forwarding frame (default 15ms).
-	/// This method must be called before `ForwardingAgent::forward` to have the intended effect.
-	pub fn set_frame_duration(&mut self, frame_duration: Duration) {
-		self.frame_duration = frame_duration;
+	/// Sets the duration after which a log must be committed to the database (default 500ms).
+	/// This method must be called before `ForwardingAgent::log_frames` to have the intended effect.
+	///
+	/// Method will panic if log duration is set to less than 5ms, as it would cause logs to be
+	/// unnecessarily small, causing compression results to be poor and possibly making the
+	/// database fall behind.
+	pub fn set_log_after_duration(&mut self, duration: Duration) {
+		if duration.as_millis() < 5 {
+			error!("log_after_duration cannot be set < 5ms");
+			return;
+		}
+
+		self.log_after_duration = duration;
+	}
+
+	/// Returns the current size (in bytes) after which a log must be committed to the database (default 1MB).
+	pub fn log_after_size(&self) -> usize {
+		return self.log_after_size;
+	}
+
+
+	/// Sets the size (in bytes) after which a log must be committed to the database (default 1MB).
+	/// This method must be called before `ForwardingAgent::log_frames` to have the intended effect.
+	///
+	/// Method will panic if log size is set to less than 4KB, as compression under of blocks under
+	/// 4KB yields poor results. It would also cause performance issues on targets with slower
+	/// file IO, possibly causing the database to permanently fall behind and crash.
+	pub fn set_log_after_size(&mut self, size: usize) {
+		if size < 4_000 {
+			error!("log_after_size cannot be set < 4KB");
+			return;
+		}
+
+		self.log_after_size = size;
 	}
 
 	/// Constructs a closure which can be passed to `rusqlite::Connection::create_scalar_function` to asynchronously
@@ -98,6 +138,74 @@ impl ForwardingAgent {
 		}
 	}
 
+
+	/// Accumulates and logs frames being forwarded into the 'DataLogs' table of the given database.
+	/// 
+	/// Although it takes a strong reference to the database, it immediately downgrades it to a weak reference and stops
+	/// execution if/when the database is dropped. 
+	/// 
+	/// # Example
+	/// 
+	/// ```
+	/// let database = Arc::new(Mutex::new(SqlConnection::open(":memory:")));
+	/// let forwarding_agent = ForwardingAgent::new();
+	/// 
+	/// tokio::spawn(forwarding_agent.forward());
+	/// tokio::spawn(forwarding_agent.log_frames(&database));
+	/// ```
+	pub fn log_frames(&self, database: &Database) -> impl Future<Output = ()> {
+		let weak_database = Arc::downgrade(database);
+
+		let mut rx = self.frame_sender.subscribe();
+		let log_after_size = self.log_after_size;
+		let log_after_duration = self.log_after_duration;
+
+		async move {
+			let mut accumulation_buffer = Vec::with_capacity(log_after_size);
+			let mut frame_split_indices = Vec::new();
+
+			let mut last_write_time = Instant::now();
+
+			loop {
+				match rx.try_recv() {
+					Ok((time_received, mut frame_buffer)) => {
+						accumulation_buffer.extend(time_received.to_le_bytes());
+						accumulation_buffer.append(&mut frame_buffer);
+
+						frame_split_indices.extend((accumulation_buffer.len() as u64).to_le_bytes());
+					},
+					Err(broadcast::error::TryRecvError::Closed) => break,
+					Err(broadcast::error::TryRecvError::Lagged(count)) => {
+						warn!("ForwardingAgent::log_frames lagged {count} frames");
+						continue;
+					},
+					_ => continue,
+				}
+
+				let since_last_write = Instant::now()
+					.duration_since(last_write_time);
+
+				if accumulation_buffer.len() > log_after_size || since_last_write > log_after_duration {
+					if let Some(database) = weak_database.upgrade() {
+						database.lock().await
+							.execute(
+								"INSERT INTO DataLogs (raw_accumulated, frame_split_indices) VALUES (?1, ?2)",
+								rusqlite::params![accumulation_buffer, frame_split_indices]
+							)
+							.unwrap();
+						
+						accumulation_buffer.clear();
+						frame_split_indices.clear();
+
+						last_write_time = Instant::now();
+					} else {
+						break;
+					}
+				}
+			}
+		}
+	}
+
 	/// Continuously forwards incoming UDP datagrams on port 7201 to all available targets. Targets are updated indirectly
 	/// by a database using the `ForwardingAgent::update_targets` method.
 	/// 
@@ -110,32 +218,43 @@ impl ForwardingAgent {
 	/// 
 	pub fn forward(self: &Arc<Self>) -> impl Future<Output = io::Result<()>> {
 		let weak_self = Arc::downgrade(self);
-		let frame_duration = self.frame_duration;
 
 		async move {
-			let socket = UdpSocket::bind("127.0.0.1:7201").await?;
-			let mut buffer = [0_u8; 512];
+			let socket = UdpSocket::bind("0.0.0.0:7201").await?;
 
-			// 15ms frames is ~60 updates / sec; adjust if necessary
-			let mut frame_interval = tokio::time::interval(frame_duration);
+			let mut frame_buffer = vec![0; 521];
 
 			while let Some(strong_self) = weak_self.upgrade() {
-				'frame: {
-					let targets = strong_self.targets.lock().await;
+				let targets = strong_self.targets.lock().await;
 
-					if targets.len() == 0 {
-						break 'frame;
-					}
-
-					if let Ok((frame_size, _)) = socket.try_recv_from(&mut buffer) {
-						for &target in targets.iter() {
-							let _ = socket.try_send_to(&buffer[..frame_size], target);
-						}
-					}
+				if targets.len() == 0 {
+					continue;
 				}
 
-				// Wait until the end of the frame
-				frame_interval.tick().await;
+				if let Ok((datagram_size, _)) = socket.try_recv_from(&mut frame_buffer) {
+					let now = SystemTime::now()
+						.duration_since(time::UNIX_EPOCH)
+						.expect("time is running backwards")
+						.as_micros() as u64;
+						
+					if datagram_size == frame_buffer.len() {
+						unsafe {
+							frame_buffer.set_len(frame_buffer.len() * 2);
+						}
+
+						continue;
+					}
+
+					for &target in targets.iter() {
+						let _ = socket.try_send_to(&frame_buffer[..datagram_size], target);
+					}
+
+					let tx = &strong_self.frame_sender;
+
+					if tx.receiver_count() > 0 {
+						tx.send((now, frame_buffer[..datagram_size].to_vec())).unwrap();
+					}
+				}
 			}
 
 			Ok(())

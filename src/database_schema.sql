@@ -30,6 +30,12 @@ CREATE TABLE IF NOT EXISTS RequestLogs (
 	timestamp INTEGER NOT NULL CHECK(timestamp > 0)
 );
 
+CREATE TABLE IF NOT EXISTS DataLogs (
+	log_id INTEGER NOT NULL PRIMARY KEY,
+	raw_accumulated BLOB NOT NULL,
+	frame_split_indices BLOB NOT NULL
+);
+
 -- TRIGGERS --
 CREATE TRIGGER IF NOT EXISTS update_forwarding
 AFTER UPDATE ON ForwardingTargets
@@ -72,3 +78,4 @@ END;
 
 -- COMMANDS --
 INSERT OR IGNORE INTO Users VALUES ('root', NULL, 'F3sBIV7QQVWq948F4heYhg', 1);
+DELETE FROM ForwardingTargets;
