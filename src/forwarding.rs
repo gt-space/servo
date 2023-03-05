@@ -231,28 +231,33 @@ impl ForwardingAgent {
 					continue;
 				}
 
-				if let Ok((datagram_size, _)) = socket.try_recv_from(&mut frame_buffer) {
-					let now = SystemTime::now()
+				match socket.recv_from(&mut frame_buffer).await {
+					Ok((datagram_size, _)) => {
+						let now = SystemTime::now()
 						.duration_since(time::UNIX_EPOCH)
 						.expect("time is running backwards")
 						.as_micros() as u64;
 						
-					if datagram_size == frame_buffer.len() {
-						unsafe {
-							frame_buffer.set_len(frame_buffer.len() * 2);
+						if datagram_size == frame_buffer.len() {
+							frame_buffer.resize(frame_buffer.len() * 2, 0);
+							continue;
 						}
 
-						continue;
-					}
+						for &target in targets.iter() {
+							let _ = socket.try_send_to(&frame_buffer[..datagram_size], target);
+						}
 
-					for &target in targets.iter() {
-						let _ = socket.try_send_to(&frame_buffer[..datagram_size], target);
-					}
+						let tx = &strong_self.frame_sender;
 
-					let tx = &strong_self.frame_sender;
-
-					if tx.receiver_count() > 0 {
-						tx.send((now, frame_buffer[..datagram_size].to_vec())).unwrap();
+						if tx.receiver_count() > 0 {
+							tx.send((now, frame_buffer[..datagram_size].to_vec())).unwrap();
+						}
+					},
+					Err(error) => {
+						// Windows throws this error when the buffer is not large enough, while UNIX systems log whatever they can
+						if error.raw_os_error() == Some(10040) {
+							frame_buffer.resize(frame_buffer.len() * 2, 0);
+						}
 					}
 				}
 			}
