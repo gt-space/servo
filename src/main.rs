@@ -1,4 +1,5 @@
 use actix_web::{App, HttpServer, web::{self, Data}};
+use actix_cors::Cors;
 use rusqlite::{Connection as SqlConnection, functions::FunctionFlags};
 use servo::{forwarding::{self, ForwardingAgent}, middleware, routes};
 use std::{env, fs, path::Path, sync::Arc, time::Duration};
