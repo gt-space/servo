@@ -8,6 +8,9 @@ pub mod extractors;
 /// Components relevant to forwarding UDP datagrams to multiple targets.
 pub mod forwarding;
 
+/// Components related to communication with the flight computer
+pub mod flight;
+
 /// Pre- and post-route middleware which does extra work with requests (ex. logging).
 pub mod middleware;
 
