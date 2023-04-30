@@ -5,8 +5,8 @@ use fs_protobuf_rust::compiled::mcfs::{
 	status::{Status, DeviceInfo, mod_Status::OneOfstatus},
 };
 
-use tokio::{sync::Mutex, net::UdpSocket};
-use std::{io, future::Future, sync::Arc, borrow::Cow, net::{Ipv4Addr, SocketAddr, SocketAddrV4}, time::Duration};
+use tokio::{sync::Mutex, net::UdpSocket, io::{self, AsyncWriteExt}};
+use std::{future::Future, sync::Arc, borrow::Cow, net::{Ipv4Addr, SocketAddr, SocketAddrV4}, time::Duration};
 
 use tokio::{net::TcpStream};
 
@@ -73,5 +73,17 @@ impl FlightComputer {
 			println!("connected to the flight computer");
 			Ok(())
 		}
+	}
+
+	pub async fn send_bytes(&self, bytes: &[u8]) -> io::Result<()> {
+		self.connection
+			.lock()
+			.await
+			.as_mut()
+			.ok_or(io::Error::new(io::ErrorKind::NotConnected, "flight computer not connected"))?
+			.write_all(bytes)
+			.await?;
+
+		Ok(())
 	}
 }

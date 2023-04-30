@@ -5,7 +5,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-actix-cors = "0.6.4"
+actix-cors = "0.6"
 actix-web = "4.2"
 anyhow = "1.0"
 argon2 = "0.4"
