@@ -53,7 +53,9 @@ async fn main() -> anyhow::Result<()> {
 			.route("/data/renew-forward", web::post().to(routes::data::renew_forwarding))
 			.route("/admin/create-user", web::post().to(routes::admin::create_user))
 			.route("/admin/sql", web::post().to(routes::admin::execute_sql))
-			.route("/set-led", web::post().to(routes::command::set_led))
+			.route("/operator/command", web::post().to(routes::command::dispatch_operator_command))
+			.route("/operator/mappings", web::get().to(routes::mappings::get_mappings))
+			.route("/operator/mappings", web::post().to(routes::mappings::set_mappings))
 	}).bind(("0.0.0.0", 7200))?
 		.run()
 		.await?;

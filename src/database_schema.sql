@@ -36,6 +36,13 @@ CREATE TABLE IF NOT EXISTS DataLogs (
 	frame_split_indices BLOB NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS NodeMappings (
+	text_id TEXT NOT NULL PRIMARY KEY,
+	node_id INTEGER NOT NULL,
+	board_id INTEGER NOT NULL,
+	channel INTEGER NOT NULL
+);
+
 -- TRIGGERS --
 CREATE TRIGGER IF NOT EXISTS update_forwarding
 AFTER UPDATE ON ForwardingTargets
