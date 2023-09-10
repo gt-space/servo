@@ -32,7 +32,7 @@ pub async fn dispatch_operator_command(
 				.lock()
 				.await
 				.query_row(
-					"SELECT node_id FROM NodeMappings WHERE text_identifier = ?1",
+					"SELECT board_id, channel, node_id FROM NodeMappings WHERE text_id = ?1",
 					rusqlite::params![target],
 					|row| Ok(mcfs::device::NodeIdentifier {
 						board_id: row.get(0)?,
