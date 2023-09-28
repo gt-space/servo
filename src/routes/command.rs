@@ -18,6 +18,8 @@ pub async fn dispatch_operator_command(
 	flight_computer: Data<FlightComputer>,
 	database: Data<Database>,
 ) -> Result<HttpResponse> {
+	use mcfs::board::{ChannelIdentifier, ChannelType};
+
 	if !flight_computer.is_connected().await {
 		return Err(error::ErrorInternalServerError("flight computer not connected"));
 	}
@@ -25,8 +27,6 @@ pub async fn dispatch_operator_command(
 	let mut node_id = None;
 
 	if let Some(target) = &request.target {
-		use mcfs::device::Channel;
-
 		node_id = Some(
 			database
 				.lock()
@@ -34,10 +34,10 @@ pub async fn dispatch_operator_command(
 				.query_row(
 					"SELECT board_id, channel, node_id FROM NodeMappings WHERE text_id = ?1",
 					rusqlite::params![target],
-					|row| Ok(mcfs::device::NodeIdentifier {
+					|row| Ok(ChannelIdentifier {
 						board_id: row.get(0)?,
-						channel: Channel::from(row.get::<_, i32>(1)?),
-						node_id: row.get(2)?,
+						channel_type: ChannelType::from(row.get::<_, i32>(1)?),
+						channel: row.get(2)?,
 					})
 				)
 				.map_err(|_| error::ErrorBadRequest("target identifier not found"))?
@@ -47,7 +47,7 @@ pub async fn dispatch_operator_command(
 	let command = match request.command.as_str() {
 		"click_valve" => {
 			if let Some(node_id) = &node_id {
-				if node_id.channel != mcfs::device::Channel::VALVE {
+				if node_id.channel_type != ChannelType::VALVE {
 					return Err(error::ErrorBadRequest("target is not a valve"));
 				}
 			} else {
@@ -55,8 +55,8 @@ pub async fn dispatch_operator_command(
 			}
 
 			let state = match request.state.as_deref() {
-				Some("open") => mcfs::device::ValveState::VALVE_OPEN,
-				Some("closed") => mcfs::device::ValveState::VALVE_CLOSED,
+				Some("open") => mcfs::board::ValveState::VALVE_OPEN,
+				Some("closed") => mcfs::board::ValveState::VALVE_CLOSED,
 				None => Err(error::ErrorBadRequest("valve state is required"))?,
 				_ => Err(error::ErrorBadRequest("unrecognized state identifier"))?,
 			};
@@ -70,7 +70,7 @@ pub async fn dispatch_operator_command(
 		},
 		"set_led" => {
 			if let Some(node_id) = &node_id {
-				if node_id.channel != mcfs::device::Channel::LED {
+				if node_id.channel_type != ChannelType::LED {
 					return Err(error::ErrorBadRequest("target is not an LED"));
 				}
 			} else {
@@ -78,8 +78,8 @@ pub async fn dispatch_operator_command(
 			}
 
 			let state = match request.state.as_deref() {
-				Some("on") => mcfs::device::LEDState::LED_ON,
-				Some("off") => mcfs::device::LEDState::LED_OFF,
+				Some("on") => mcfs::board::LEDState::LED_ON,
+				Some("off") => mcfs::board::LEDState::LED_OFF,
 				None => Err(error::ErrorBadRequest("state field required"))?,
 				_ => Err(error::ErrorBadRequest("unrecognized state identifier"))?,
 			};

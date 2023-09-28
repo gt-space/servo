@@ -21,7 +21,7 @@ pub struct GetMappingResponse {
 
 /// A route function which retrieves the current stored mappings.
 pub async fn get_mappings(database: Data<Database>) -> actix_web::Result<Json<GetMappingResponse>> {
-	use fs_protobuf_rust::compiled::mcfs::device::Channel;
+	use fs_protobuf_rust::compiled::mcfs::board::ChannelType;
 
 	let mappings = database.lock().await
 		.prepare("SELECT (text_id, board_id, channel, node_id) FROM NodeMappings")
@@ -30,17 +30,20 @@ pub async fn get_mappings(database: Data<Database>) -> actix_web::Result<Json<Ge
 			Ok(NodeMapping {
 				text_id: row.get(0)?,
 				board_id: row.get(1)?,
-				channel: match Channel::from(row.get::<_, i32>(2)?) {
-					Channel::GPIO => "gpio",
-					Channel::LED => "led",
-					Channel::RAIL_3V3 => "rail_3v3",
-					Channel::RAIL_5V => "rail_5v",
-					Channel::RAIL_5V5 => "rail_5v5",
-					Channel::RAIL_24V => "rail_24v",
-					Channel::CURRENT_LOOP => "current_loop",
-					Channel::DIFFERENTIAL_SIGNAL => "differential_signal",
-					Channel::TEMPERATURE_DETECTOR => "temperature_detector",
-					Channel::VALVE => "valve",
+				channel: match ChannelType::from(row.get::<_, i32>(2)?) {
+					ChannelType::GPIO => "gpio",
+					ChannelType::LED => "led",
+					ChannelType::RAIL_3V3 => "rail_3v3",
+					ChannelType::RAIL_5V => "rail_5v",
+					ChannelType::RAIL_5V5 => "rail_5v5",
+					ChannelType::RAIL_24V => "rail_24v",
+					ChannelType::CURRENT_LOOP => "current_loop",
+					ChannelType::DIFFERENTIAL_SIGNAL => "differential_signal",
+					ChannelType::TC => "tc",
+					ChannelType::RTD => "rtd",
+					ChannelType::VALVE_CURRENT => "valve_current",
+					ChannelType::VALVE_VOLTAGE => "valve_voltage",
+					ChannelType::VALVE => "valve",
 				}.to_string(),
 				node_id: row.get(3)?,
 			})
@@ -68,19 +71,22 @@ pub async fn set_mappings(
 	let database = database.lock().await;
 
 	for mapping in &request.mappings {
-		use fs_protobuf_rust::compiled::mcfs::device::Channel;
+		use fs_protobuf_rust::compiled::mcfs::board::ChannelType;
 
 		let channel = match mapping.channel.to_lowercase().as_str() {
-			"gpio" => Channel::GPIO,
-			"led" => Channel::LED,
-			"rail_3v3" => Channel::RAIL_3V3,
-			"rail_5v" => Channel::RAIL_5V,
-			"rail_5v5" => Channel::RAIL_5V5,
-			"rail_24v" => Channel::RAIL_24V,
-			"current_loop" => Channel::CURRENT_LOOP,
-			"differential_signal" => Channel::DIFFERENTIAL_SIGNAL,
-			"temperature_detector" => Channel::TEMPERATURE_DETECTOR,
-			"valve" => Channel::VALVE,
+			"gpio" => ChannelType::GPIO,
+			"led" => ChannelType::LED,
+			"rail_3v3" => ChannelType::RAIL_3V3,
+			"rail_5v" => ChannelType::RAIL_5V,
+			"rail_5v5" => ChannelType::RAIL_5V5,
+			"rail_24v" => ChannelType::RAIL_24V,
+			"current_loop" => ChannelType::CURRENT_LOOP,
+			"differential_signal" => ChannelType::DIFFERENTIAL_SIGNAL,
+			"tc" => ChannelType::TC,
+			"valve_current" => ChannelType::VALVE_CURRENT,
+			"valve_voltage" => ChannelType::VALVE_VOLTAGE,
+			"rtd" => ChannelType::RTD,
+			"valve" => ChannelType::VALVE,
 			_ => Err(error::ErrorBadRequest("invalid channel name"))?
 		} as i32;
 

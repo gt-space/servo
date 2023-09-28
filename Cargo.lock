@@ -553,6 +553,7 @@ dependencies = [
 [[package]]
 name = "fs-protobuf-rust"
 version = "0.0.1"
+source = "git+ssh://git@github-research.gatech.edu/YJSP/fs-protobuf-rust#72ddd0327962b35a30b0e55ac65723c66f171441"
 dependencies = [
  "pb-rs",
  "quick-protobuf",
