@@ -1,9 +1,6 @@
 /// Route functions requiring admin privilages for execution
 pub mod admin;
 
-/// Authentication-related route functions
-pub mod auth;
-
 /// Route functions related to operator commands
 pub mod command;
 

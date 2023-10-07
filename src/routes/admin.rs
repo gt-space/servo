@@ -1,37 +1,7 @@
 use actix_web::{error, web::{Data, Json}, Result};
-use argon2::password_hash::{rand_core::OsRng, SaltString};
-use crate::{Database, extractors::User};
+use crate::Database;
 use rusqlite::types::ValueRef;
 use serde::{Deserialize, Serialize};
-
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize)]
-pub struct CreateUserRequest {
-	pub username: String,
-	pub is_admin: bool,
-}
-
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct CreateUserResponse;
-
-/// A route function which creates a user without a password
-pub async fn create_user(database: Data<Database>, request: Json<CreateUserRequest>, user: User) -> Result<Json<CreateUserResponse>> {
-	if !user.is_admin {
-		return Err(error::ErrorUnauthorized("admin access required"));
-	}
-
-	let salt = SaltString::generate(&mut OsRng).to_string();
-
-	database.lock().await
-		.execute(
-			"INSERT INTO Users VALUES (?1, NULL, ?2, ?3)",
-			rusqlite::params![&request.username, salt, request.is_admin as i32]
-		)
-		.map_err(|_| error::ErrorInternalServerError("sql error"))?;
- 
-	Ok(Json(CreateUserResponse))
-}
 
 #[allow(missing_docs)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -47,11 +17,7 @@ pub struct ExecuteSqlResponse {
 }
 
 /// A route function which executes an arbitrary SQL query
-pub async fn execute_sql(database: Data<Database>, request: Json<ExecuteSqlRequest>, user: User) -> Result<Json<ExecuteSqlResponse>> {
-	if !user.is_admin {
-		return Err(error::ErrorUnauthorized("admin access required"));
-	}
-
+pub async fn execute_sql(database: Data<Database>, request: Json<ExecuteSqlRequest>) -> Result<Json<ExecuteSqlResponse>> {
 	let database = database.lock().await;
 
 	let mut sql = database
