@@ -24,7 +24,7 @@ pub async fn get_mappings(database: Data<Database>) -> actix_web::Result<Json<Ge
 	use fs_protobuf_rust::compiled::mcfs::board::ChannelType;
 
 	let mappings = database.lock().await
-		.prepare("SELECT (text_id, board_id, channel, node_id) FROM NodeMappings")
+		.prepare("SELECT text_id, board_id, channel, node_id FROM NodeMappings")
 		.map_err(|_| error::ErrorInternalServerError("error preparing sql statement"))?
 		.query_map([], |row| {
 			Ok(NodeMapping {
