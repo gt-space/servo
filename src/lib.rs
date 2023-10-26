@@ -17,6 +17,9 @@ pub mod middleware;
 /// All functions defining API routes.
 pub mod routes;
 
+/// Start-up functionality for servo that is executed on command servo serve.
+pub mod commands;
+
 use std::sync::Arc;
 
 /// A convenience type representing a `rusqlite::Connection` that may be passed to multiple async
