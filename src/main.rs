@@ -55,7 +55,10 @@ async fn main() -> anyhow::Result<()> {
 			.route("/admin/sql", web::post().to(routes::admin::execute_sql))
 			.route("/operator/command", web::post().to(routes::command::dispatch_operator_command))
 			.route("/operator/mappings", web::get().to(routes::mappings::get_mappings))
-			.route("/operator/mappings", web::post().to(routes::mappings::set_mappings))
+			.route("/operator/mappings", web::post().to(routes::mappings::post_mappings))
+			.route("/operator/mappings", web::put().to(routes::mappings::put_mappings))
+			.route("/operator/active-configuration", web::get().to(routes::mappings::get_active_configuration))
+			.route("/operator/active-configuration", web::post().to(routes::mappings::activate_configuration))
 	}).bind(("0.0.0.0", 7200))?
 		.run()
 		.await?;

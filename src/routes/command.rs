@@ -32,15 +32,33 @@ pub async fn dispatch_operator_command(
 				.lock()
 				.await
 				.query_row(
-					"SELECT board_id, channel, node_id FROM NodeMappings WHERE text_id = ?1",
+					"SELECT board_id, channel, channel_type FROM NodeMappings WHERE configuration_id = ?1 AND text_id = ?2",
 					rusqlite::params![target],
-					|row| Ok(ChannelIdentifier {
-						board_id: row.get(0)?,
-						channel_type: ChannelType::from(row.get::<_, i32>(1)?),
-						channel: row.get(2)?,
-					})
-				)
-				.map_err(|_| error::ErrorBadRequest("target identifier not found"))?
+					|row| {
+						let channel_type = match row.get::<_, String>(2)?.as_ref() {
+							"gpio" => ChannelType::GPIO,
+							"led" => ChannelType::LED,
+							"rail_3v3" => ChannelType::RAIL_3V3,
+							"rail_5v" => ChannelType::RAIL_5V,
+							"rail_5v5" => ChannelType::RAIL_5V5,
+							"rail_24v" => ChannelType::RAIL_24V,
+							"current_loop" => ChannelType::CURRENT_LOOP,
+							"differential_signal" => ChannelType::DIFFERENTIAL_SIGNAL,
+							"tc" => ChannelType::TC,
+							"valve_current" => ChannelType::VALVE_CURRENT,
+							"valve_voltage" => ChannelType::VALVE_VOLTAGE,
+							"rtd" => ChannelType::RTD,
+							"valve" => ChannelType::VALVE,
+							invalid => panic!("database has allowed storing invalid channel_type '{}'.", invalid),
+						};
+						
+						Ok(ChannelIdentifier {
+							board_id: row.get(0)?,
+							channel: row.get(1)?,
+							channel_type,
+						})
+					}
+				).map_err(|_| error::ErrorBadRequest("target identifier not found"))?
 		);
 	}
 

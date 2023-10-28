@@ -37,10 +37,30 @@ CREATE TABLE IF NOT EXISTS DataLogs (
 );
 
 CREATE TABLE IF NOT EXISTS NodeMappings (
-	text_id TEXT NOT NULL PRIMARY KEY,
-	node_id INTEGER NOT NULL,
+	text_id TEXT NOT NULL,
+	configuration_id TEXT NOT NULL,
+	channel INTEGER NOT NULL,
 	board_id INTEGER NOT NULL,
-	channel INTEGER NOT NULL
+	channel_type TEXT NOT NULL,
+	computer TEXT NOT NULL CHECK(computer = 'flight' OR computer = 'ground'),
+	active BOOLEAN NOT NULL DEFAULT FALSE,
+
+	CONSTRAINT primary_key PRIMARY KEY (text_id, configuration_id),
+	CHECK (channel_type IN (
+		'gpio',
+		'led',
+		'rail_3v3',
+		'rail_5v',
+		'rail_5v5',
+		'rail_24v',
+		'current_loop',
+		'differential_signal',
+		'tc',
+		'valve_current',
+		'valve_voltage',
+		'rtd',
+		'valve'
+	))
 );
 
 -- TRIGGERS --
