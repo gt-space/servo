@@ -32,7 +32,7 @@ pub async fn dispatch_operator_command(
 				.lock()
 				.await
 				.query_row(
-					"SELECT board_id, channel, channel_type FROM NodeMappings WHERE configuration_id = ?1 AND text_id = ?2",
+					"SELECT board_id, channel, channel_type FROM NodeMappings WHERE text_id = ?1 AND active = TRUE",
 					rusqlite::params![target],
 					|row| {
 						let channel_type = match row.get::<_, String>(2)?.as_ref() {
