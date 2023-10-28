@@ -1,8 +1,7 @@
 use actix_web::{error, web::{Data, Json}, HttpResponse};
+use crate::Database;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-use crate::{Database, extractors::User};
 
 /// The mapping of an individual node.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -127,6 +126,7 @@ pub async fn put_mappings(
 	Ok(HttpResponse::Ok().finish())
 }
 
+/// Request/response struct for getting and setting the active configuration.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ActiveConfiguration {
 	configuration_id: String
