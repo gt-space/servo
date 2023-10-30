@@ -1,7 +1,7 @@
 use actix_web::{App, HttpServer, web::{self, Data}};
 use actix_cors::Cors;
 use rusqlite::{Connection as SqlConnection, functions::FunctionFlags};
-use crate::{forwarding::{self, ForwardingAgent}, middleware, routes, flight::FlightComputer};
+use crate::{forwarding::{self, ForwardingAgent}, middleware, routes, flight::FlightComputer, extractors::HostMap};
 use std::{path::Path, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
@@ -12,6 +12,7 @@ pub async fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 	let database = SqlConnection::open(servo_dir.join("database.sqlite"))?;
 	let forwarding_agent = Arc::new(ForwardingAgent::new());
 	let flight_computer = FlightComputer::new();
+	let host_map = HostMap::new();
 
 	database.create_scalar_function("forward_target", 2, FunctionFlags::SQLITE_UTF8, forwarding_agent.update_targets())?;
 
@@ -36,6 +37,7 @@ pub async fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 			.wrap(middleware::LoggingFactory::new(&database))
 			.app_data(Data::new(database.clone()))
 			.app_data(Data::new(flight_computer.clone()))
+			.app_data(Data::new(host_map.clone()))
 			.route("/auth", web::post().to(routes::auth::authenticate_user))
 			.route("/data/forward", web::post().to(routes::data::start_forwarding))
 			.route("/data/renew-forward", web::post().to(routes::data::renew_forwarding))
