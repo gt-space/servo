@@ -2,7 +2,7 @@ mod commands;
 mod flight;
 
 use servo::{forwarding, middleware, routes};
-use std::{env, fs, path::Path};
+use std::{env, fs, path::Path, process};
 use clap::Command;
 
 #[tokio::main]
@@ -30,14 +30,13 @@ async fn main() -> anyhow::Result<()> {
 		)
 		.get_matches();
 	
-	let _result = match matches.subcommand() {
+	match matches.subcommand() {
 		Some(("serve", _)) => {
-			if let Err(err) = commands::execute_setup(&servo_dir).await {
-				eprintln!("Error setting up Servo: {}", err);
-			}
+			commands::serve(&servo_dir).await?;
 		}
 		_ => {
-			//
+			eprintln!("Error: Invalid command. Please check the command you entered.");
+			process::exit(1);
 		}
 	};
 	Ok(())

@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 /// Performs the necessary setup to connect to the servo server.
 /// This function initializes database connections, spawns background tasks,
 /// and starts the HTTP server to serve the application upon request.
-pub async fn execute_setup(servo_dir: &Path) -> anyhow::Result<()> {
+pub async fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 	let database = SqlConnection::open(servo_dir.join("database.sqlite"))?;
 	let forwarding_agent = Arc::new(ForwardingAgent::new());
 	let flight_computer = FlightComputer::new();
