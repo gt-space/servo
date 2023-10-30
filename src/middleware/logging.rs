@@ -1,6 +1,6 @@
 use actix_web::{dev::{Service, ServiceRequest, ServiceResponse, Transform}, error};
-use crate::{Database, extractors::User};
-use std::{future::{Future, ready, Ready}, pin::Pin, rc::Rc, time::{self, SystemTime}};
+use crate::{Database, extractors::Hostname};
+use std::{future::{Future, ready, Ready}, pin::Pin, rc::Rc};
 
 pub struct LoggingMiddleware<S> {
 	database: Database,
@@ -24,9 +24,6 @@ where
 		let service = self.service.clone();
 
 		Box::pin(async move {
-			let log_id = uuid::Uuid::new_v4()
-				.to_string();
-
 			let endpoint = request
 				.path()
 				.to_owned();
@@ -36,24 +33,18 @@ where
 				.expect("unit tests are currently incompatible with logging middleware")
 				.to_string();
 
-			let username = request.extract::<User>()
-				.await
-				.map(|user| user.username)
-				.ok();
+			let hostname = request.extract::<Hostname>().await?;
+			let locked_database = database.lock().await;
 
-			let timestamp = SystemTime::now()
-				.duration_since(time::UNIX_EPOCH)
-				.expect("time is running backwards")
-				.as_secs();
-
-			database
-				.lock()
-				.await
+			locked_database
 				.execute(
-					"INSERT INTO RequestLogs VALUES (?1, ?2, ?3, ?4, NULL, ?5)",
-					rusqlite::params![log_id, endpoint, origin, username, timestamp]
+					"INSERT INTO RequestLogs (endpoint, origin, hostname) VALUES (?1, ?2, ?3)",
+					rusqlite::params![endpoint, origin, hostname]
 				)
-				.map_err(|_| error::ErrorInternalServerError("sql error"))?;
+				.map_err(|error| error::ErrorInternalServerError(format!("sql error: {}", error.to_string())))?;
+
+			let log_id = locked_database.last_insert_rowid();
+			drop(locked_database);
 
 			let response = service.call(request).await?;
 
@@ -64,7 +55,7 @@ where
 					"UPDATE RequestLogs SET status_code = ?1 WHERE log_id = ?2",
 					rusqlite::params![response.status().as_u16(), log_id]
 				)
-				.map_err(|_| error::ErrorInternalServerError("sql error"))?;
+				.map_err(|error| error::ErrorInternalServerError(format!("sql error: {}", error.to_string())))?;
 
 			Ok(response)
 		})

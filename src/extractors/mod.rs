@@ -1,3 +1,3 @@
-mod user;
+mod hostname;
 
-pub use user::User;
+pub use hostname::{HostMap, Hostname};

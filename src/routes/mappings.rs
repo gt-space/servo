@@ -1,7 +1,6 @@
 use actix_web::{error, web::{Data, Json}, HttpResponse};
+use crate::Database;
 use serde::{Deserialize, Serialize};
-
-use crate::{Database, extractors::User};
 
 /// The mapping of an individual node.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -63,11 +62,7 @@ pub struct SetMappingsRequest {
 }
 
 /// A route function which inserts a new mapping or updates an existing one
-pub async fn set_mappings(
-	database: Data<Database>,
-	request: Json<SetMappingsRequest>,
-	_user: User,
-) -> actix_web::Result<HttpResponse> {
+pub async fn set_mappings(database: Data<Database>, request: Json<SetMappingsRequest>) -> actix_web::Result<HttpResponse> {
 	let database = database.lock().await;
 
 	for mapping in &request.mappings {
