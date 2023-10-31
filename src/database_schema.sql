@@ -2,19 +2,6 @@
 PRAGMA foreign_keys = ON;
 
 -- TABLES --
-CREATE TABLE IF NOT EXISTS Users (
-	username TEXT NOT NULL PRIMARY KEY,
-	pass_hash TEXT,
-	pass_salt TEXT NOT NULL,
-	is_admin INTEGER NOT NULL CHECK(is_admin BETWEEN 0 AND 1)
-);
-
-CREATE TABLE IF NOT EXISTS Sessions (
-	session_id TEXT NOT NULL PRIMARY KEY,
-	username TEXT NOT NULL UNIQUE REFERENCES Users(username),
-	timestamp INTEGER NOT NULL CHECK(timestamp > 0)
-);
-
 CREATE TABLE IF NOT EXISTS ForwardingTargets (
 	target_id TEXT NOT NULL PRIMARY KEY,
 	socket_address TEXT NOT NULL UNIQUE,
@@ -22,12 +9,12 @@ CREATE TABLE IF NOT EXISTS ForwardingTargets (
 );
 
 CREATE TABLE IF NOT EXISTS RequestLogs (
-	log_id TEXT NOT NULL PRIMARY KEY,
+	log_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 	endpoint TEXT NOT NULL,
 	origin TEXT NOT NULL,
-	username TEXT REFERENCES Users(username),
-	status_code INTEGER,
-	timestamp INTEGER NOT NULL CHECK(timestamp > 0)
+	hostname TEXT,
+	status_code INTEGER DEFAULT NULL,
+	timestamp INTEGER NOT NULL DEFAULT (unixepoch()) CHECK(timestamp > 0) 
 );
 
 CREATE TABLE IF NOT EXISTS DataLogs (
@@ -97,12 +84,5 @@ BEGIN
 	SELECT RAISE(ABORT, 'Deleting request logs is not permitted.');
 END;
 
-CREATE TRIGGER IF NOT EXISTS overwrite_previous_session
-BEFORE INSERT ON Sessions
-BEGIN
-	DELETE FROM Sessions WHERE username = new.username;
-END;
-
 -- COMMANDS --
-INSERT OR IGNORE INTO Users VALUES ('root', NULL, 'F3sBIV7QQVWq948F4heYhg', 1);
 DELETE FROM ForwardingTargets;
