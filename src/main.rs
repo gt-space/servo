@@ -23,10 +23,10 @@ async fn main() -> anyhow::Result<()> {
 
 	let matches = Command::new("servo")
 		.about("Servo command line tool")
-		//.subcommand_required(true)
+		.subcommand_required(true)
 		.subcommand(
 			Command::new("serve")
-			.about("Starts the servo server.")
+				.about("Starts the servo server.")
 		)
 		.get_matches();
 	
@@ -39,5 +39,6 @@ async fn main() -> anyhow::Result<()> {
 			process::exit(1);
 		}
 	};
+
 	Ok(())
 }
