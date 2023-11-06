@@ -34,7 +34,7 @@ where
 				.to_string();
 
 			let hostname = request.extract::<Hostname>().await?;
-			let locked_database = database.lock().await;
+			let locked_database = database.connection().lock().await;
 
 			locked_database
 				.execute(
@@ -49,6 +49,7 @@ where
 			let response = service.call(request).await?;
 
 			database
+				.connection()
 				.lock()
 				.await
 				.execute(

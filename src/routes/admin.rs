@@ -18,7 +18,7 @@ pub struct ExecuteSqlResponse {
 
 /// A route function which executes an arbitrary SQL query
 pub async fn execute_sql(database: Data<Database>, request: Json<ExecuteSqlRequest>) -> Result<Json<ExecuteSqlResponse>> {
-	let database = database.lock().await;
+	let database = database.connection().lock().await;
 
 	let mut sql = database
 		.prepare(&request.raw_sql)

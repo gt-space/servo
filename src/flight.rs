@@ -1,18 +1,35 @@
-use tokio::{sync::Mutex, io::{self, AsyncWriteExt}, net::TcpStream};
-use std::{future::Future, sync::Arc, net::{Ipv4Addr, SocketAddr, SocketAddrV4}, time::Duration};
+use common::{Unit, ValveState, VehicleState};
+use crate::routes::mappings::NodeMapping;
+use tokio::{sync::{Mutex, Notify}, io::{self, AsyncWriteExt}, net::{TcpStream, UdpSocket}};
+
+use std::{
+	future::Future,
+	net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+	sync::Arc,
+	time::Duration,
+};
 
 /// Struct capable of performing thread-safe operations on a flight computer
 /// connection, thus capable of being passed to route handlers.
 #[derive(Clone, Debug)]
 pub struct FlightComputer {
-	connection: Arc<Mutex<Option<TcpStream>>>
+	connection: Arc<Mutex<Option<TcpStream>>>,
+	vehicle_state: Arc<(Mutex<VehicleState>, Notify)>,
 }
 
 impl FlightComputer {
 	/// Constructs a thread-safe wrapper around a TCP stream which can be
 	/// connected to the flight computer.
 	pub fn new() -> Self {
-		FlightComputer { connection: Arc::new(Mutex::new(None)) }
+		FlightComputer {
+			connection: Arc::new(Mutex::new(None)),
+			vehicle_state: Arc::new((Mutex::new(VehicleState::new()), Notify::new())),
+		}
+	}
+
+	/// A getter that creates a new weak reference to the rocket state.
+	pub fn vehicle_state(&self) -> Arc<(Mutex<VehicleState>, Notify)> {
+		self.vehicle_state.clone()
 	}
 
 	/// A getter which determines whether the flight computer is connected.
@@ -59,5 +76,128 @@ impl FlightComputer {
 			.await?;
 
 		Ok(())
+	}
+
+	/// Sends the given set of mappings to the flight computer.
+	pub async fn send_mappings(&self, mappings: &Vec<NodeMapping>) -> io::Result<()> {
+		use fs_protobuf_rust::compiled::mcfs::{
+			core::{mod_Message, Message},
+			mapping::ChannelMapping,
+			board::{ChannelIdentifier, ChannelType},
+		};
+
+		let mappings_proto = fs_protobuf_rust::compiled::mcfs::mapping::Mapping {
+			channel_mappings: mappings
+				.into_iter()
+				.map(|mapping| {
+					let channel_type = match mapping.channel_type.as_ref() {
+						"gpio" => ChannelType::GPIO,
+						"led" => ChannelType::LED,
+						"rail_3v3" => ChannelType::RAIL_3V3,
+						"rail_5v" => ChannelType::RAIL_5V,
+						"rail_5v5" => ChannelType::RAIL_5V5,
+						"rail_24v" => ChannelType::RAIL_24V,
+						"current_loop" => ChannelType::CURRENT_LOOP,
+						"differential_signal" => ChannelType::DIFFERENTIAL_SIGNAL,
+						"tc" => ChannelType::TC,
+						"valve_current" => ChannelType::VALVE_CURRENT,
+						"valve_voltage" => ChannelType::VALVE_VOLTAGE,
+						"rtd" => ChannelType::RTD,
+						"valve" => ChannelType::VALVE,
+						_ => panic!("invalid channel type"),
+					};
+			
+					ChannelMapping {
+						name: mapping.text_id.clone().into(),
+						channel_identifier: Some(ChannelIdentifier {
+							board_id: mapping.board_id,
+							channel_type,
+							channel: mapping.channel,
+						})
+					}
+				})
+				.collect::<Vec<_>>()
+		};
+
+		let message = Message {
+			timestamp: None,
+			board_id: 0,
+			content: mod_Message::OneOfcontent::mapping(mappings_proto)
+		};
+
+		let serialized = quick_protobuf::serialize_into_vec(&message)
+			.unwrap();
+
+		self.send_bytes(&serialized).await?;
+		
+		let mut vehicle_state = self.vehicle_state.0
+			.lock()
+			.await;
+
+		for mapping in mappings {
+			if mapping.channel_type == "valve" {
+				vehicle_state.valve_states.insert(mapping.text_id.clone(), ValveState::NoData);
+			} else {
+				vehicle_state.sensor_readings.insert(mapping.text_id.clone(), Unit::NoData);
+			}
+		}
+
+		Ok(())
+	}
+
+	/// Sends the given sequence to the flight computer to be executed.
+	pub async fn send_sequence(&self, name: &str, script: &str) -> io::Result<()> {
+		use fs_protobuf_rust::compiled::mcfs::{
+			core::{mod_Message, Message},
+			sequence::Sequence
+		};
+
+		let message = Message {
+			timestamp: None,
+			board_id: 0,
+			content: mod_Message::OneOfcontent::sequence(Sequence {
+				name: name.into(),
+				script: script.into(),
+			})
+		};
+		
+		self.send_bytes(&quick_protobuf::serialize_into_vec(&message).unwrap()).await?;
+
+		Ok(())
+	}
+
+	/// Repeatedly receives vehicle state information from the flight computer.
+	pub fn receive_vehicle_state(&self) -> impl Future<Output = io::Result<()>> {
+		let weak_vehicle_state = Arc::downgrade(&self.vehicle_state);
+
+		async move {
+			let socket = UdpSocket::bind("0.0.0.0:7201").await.unwrap();
+			let mut frame_buffer = vec![0; 521];
+
+			while let Some(vehicle_state) = weak_vehicle_state.upgrade() {
+				match socket.recv_from(&mut frame_buffer).await {
+					Ok((datagram_size, _)) => {
+						if datagram_size == frame_buffer.len() {
+							frame_buffer.resize(frame_buffer.len() * 2, 0);
+							continue;
+						}
+
+						if let Ok(new_state) = postcard::from_bytes::<VehicleState>(&frame_buffer[..datagram_size]) {
+							*vehicle_state.0.lock().await = new_state;
+							vehicle_state.1.notify_waiters();
+						}
+					},
+					Err(error) => {
+						// Windows throws this error when the buffer is not large enough.
+						// Unix systems just log whatever they can.
+						if error.raw_os_error() == Some(10040) {
+							frame_buffer.resize(frame_buffer.len() * 2, 0);
+						}
+					}
+				}
+			}
+
+			Ok(())
+		}
 	}
 }

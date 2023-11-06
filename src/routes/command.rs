@@ -29,6 +29,7 @@ pub async fn dispatch_operator_command(
 	if let Some(target) = &request.target {
 		node_id = Some(
 			database
+				.connection()
 				.lock()
 				.await
 				.query_row(
