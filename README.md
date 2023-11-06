@@ -12,15 +12,15 @@ Then, clone the repository. Remember, this requires authentication in the form o
 
 ```
 # Using personal access token
-git clone https://github-research.gatech.edu/YJSP/fs-server.git
+git clone https://github-research.gatech.edu/YJSP/servo.git
 
 # Using SSH key
-git clone git@github-research.gatech.edu:YJSP/fs-server.git
+git clone git@github-research.gatech.edu:YJSP/servo.git
 ```
 
-Finally, install Servo by using the path to the project directory (by default, the path will be `./fs-server`). This will allow you to use the `servo` command globally.
+Finally, install Servo by using the path to the project directory (by default, the path will be `./servo`). This will allow you to use the `servo` command globally.
 
-`cargo install --path ./fs-server`
+`cargo install --path ./servo`
 
 ## Development
 
