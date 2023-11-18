@@ -9,3 +9,6 @@ pub mod data;
 
 /// Route functions for getting and setting node mappings
 pub mod mappings;
+
+/// Route functions for setting and sending sequences.
+pub mod sequence;

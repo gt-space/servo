@@ -1,16 +1,25 @@
 use actix_web::{error, web::{Data, Json}, HttpResponse};
-use crate::Database;
+use crate::{Database, flight::FlightComputer};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// The mapping of an individual node.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct NodeMapping {
-	text_id: String,
-	board_id: u32,
-	channel_type: String,
-	channel: u32,
-	computer: String,
+	/// The text identifier, or name, of the node.
+	pub text_id: String,
+	
+	/// A number identifying which SAM board the node is on.
+	pub board_id: u32,
+
+	/// The channel type of the node, such as "valve".
+	pub channel_type: String,
+
+	/// A number identifying which channel on the SAM board controls the node.
+	pub channel: u32,
+
+	/// Which computer controls the SAM board, "flight" or "ground".
+	pub computer: String,
 }
 
 /// Request struct for getting mappings.
@@ -70,6 +79,7 @@ pub struct SetMappingsRequest {
 /// A route function which deletes and replaces a previous configuration
 pub async fn post_mappings(
 	database: Data<Database>,
+	flight_computer: Data<FlightComputer>,
 	request: Json<SetMappingsRequest>,
 ) -> actix_web::Result<HttpResponse> {
 	let database = database.lock().await;
@@ -94,12 +104,15 @@ pub async fn post_mappings(
 			.map_err(|err| error::ErrorInternalServerError(format!("sql error: {}", err.to_string())))?;
 		}
 
+	flight_computer.send_mappings(&request.mappings).await?;
+
 	Ok(HttpResponse::Ok().finish())
 }
 
 /// A route function which inserts a new mapping or updates an existing one
 pub async fn put_mappings(
 	database: Data<Database>,
+	flight_computer: Data<FlightComputer>,
 	request: Json<SetMappingsRequest>,
 ) -> actix_web::Result<HttpResponse> {
 	let database = database.lock().await;
@@ -122,6 +135,8 @@ pub async fn put_mappings(
 			mapping.computer,
 		]).map_err(|_| error::ErrorInternalServerError("sql error"))?;
 	}
+
+	flight_computer.send_mappings(&request.mappings).await?;
 
 	Ok(HttpResponse::Ok().finish())
 }

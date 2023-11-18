@@ -46,6 +46,7 @@ pub async fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 			.route("/operator/mappings", web::put().to(routes::mappings::put_mappings))
 			.route("/operator/active-configuration", web::get().to(routes::mappings::get_active_configuration))
 			.route("/operator/active-configuration", web::post().to(routes::mappings::activate_configuration))
+			.route("/sequence", web::post().to(routes::sequence::run_sequence))
 	}).bind(("0.0.0.0", 7200))?
 		.run()
 		.await?;
