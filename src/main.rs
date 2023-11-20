@@ -1,4 +1,4 @@
-use servo::commands;
+use servo::tool;
 use std::{env, fs, path::Path, process};
 use clap::Command;
 
@@ -25,12 +25,15 @@ async fn main() -> anyhow::Result<()> {
 			Command::new("serve")
 				.about("Starts the servo server.")
 		)
+		.subcommand(
+			Command::new("deploy")
+				.about("Deploys YJSP software to all available computers on the network.")
+		)
 		.get_matches();
 	
 	match matches.subcommand() {
-		Some(("serve", _)) => {
-			commands::serve(&servo_dir).await?;
-		}
+		Some(("serve", _)) => tool::serve(&servo_dir).await?,
+		Some(("deploy", _)) => tool::deploy().await?,
 		_ => {
 			eprintln!("Error: Invalid command. Please check the command you entered.");
 			process::exit(1);

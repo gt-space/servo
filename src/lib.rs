@@ -17,8 +17,8 @@ pub mod middleware;
 /// All functions defining API routes.
 pub mod routes;
 
-/// Start-up functionality for servo that is executed on command servo serve.
-pub mod commands;
+/// Everything related to the Servo command line tool.
+pub mod tool;
 
 use std::sync::Arc;
 
