@@ -1,153 +1,138 @@
 use std::{time::Duration, sync::Mutex, io::{self, Write}, thread};
-use once_cell::sync::Lazy;
 
-struct Task {
-	subtasks: i32,
-	subtask_running: bool,
+#[derive(Clone, Copy, Debug)]
+pub struct Task {
+	pub row_offset: i32
 }
 
-static TASK: Lazy<Mutex<Option<Task>>> = Lazy::new(|| Mutex::new(None));
+#[doc(hidden)]
+#[allow(private_interfaces)]
+pub static _TASKS: Mutex<Vec<Task>> = Mutex::new(Vec::new());
 
-#[macro_export]
-macro_rules! warning {
-	($fmt:expr, $($tokens:tt)*) => {
-		println!(concat!("\x1b[33;1m▲\x1b[0m ", $fmt), $($tokens)*);
-	}
-}
-
-#[macro_export]
-macro_rules! error {
-	($fmt:expr, $($tokens:tt)*) => {
-		eprintln!(concat!("\x1b[31;1m✘\x1b[0m ", $fmt), $($tokens)*);
-	}
-}
-
+/// Begins a task or subtask with a spinner.
 #[macro_export]
 macro_rules! task {
 	($($tokens:tt)*) => {
-		crate::tool::log::_task(format!($($tokens)*));
+		let mut tasks = $crate::tool::log::_TASKS.lock().unwrap();
+		let message = format!($($tokens)*);
+
+		for task in tasks.iter_mut() {
+			if task.row_offset == -1 {
+				task.row_offset = 1;
+			} else {
+				task.row_offset += 1;
+			}
+		}
+
+		tasks.push($crate::tool::log::Task { row_offset: -1 });
+
+		if tasks.len() > 1 && tasks[tasks.len() - 2].row_offset != 1 {
+			print!("\x1b[{}G┣", (tasks.len() - 2) * 5 + 3);
+		}
+
+		let task_count = tasks.len();
+		drop(tasks);
+
+		print!("\n");
+
+		if task_count > 1 {
+			print!("{}", " ".repeat((task_count - 2) * 5 + 2) + "┗━ ");
+		}
+
+		print!("\x1b[33;1m-\x1b[0m {message}");
+		::std::io::stdout().flush().unwrap();
+
+		if task_count == 1 {
+			::std::thread::spawn($crate::tool::log::_spin);
+		}
 	}
 }
 
-#[macro_export]
-macro_rules! subtask {
-	($($tokens:tt)*) => {
-		crate::tool::log::_subtask(format!($($tokens)*));
-	}
-}
-
+/// Indicates that the most recently created task has passed by replacing
+/// the spinner with a green check mark.
 #[macro_export]
 macro_rules! pass {
 	($($tokens:tt)*) => {
-		crate::tool::log::_pass(format!($($tokens)*));
+		$crate::tool::log::end_task!("\x1b[32;1m✔\x1b[0m", $($tokens)*);
 	}
 }
 
+/// Indicates that the most recently created task has passed with a warning
+/// by replacing the spinner with a yellow triangle.
+#[macro_export]
+macro_rules! warn {
+	($($tokens:tt)*) => {
+		$crate::tool::log::end_task!("\x1b[33;1m▲\x1b[0m", $($tokens)*);
+	}
+}
+
+/// Indicates that the most recently created task has failed by replacing
+/// the spinner with a red x.
 #[macro_export]
 macro_rules! fail {
 	($($tokens:tt)*) => {
-		crate::tool::log::_fail(format!($($tokens)*));
+		$crate::tool::log::end_task!("\x1b[31;1m✘\x1b[0m", $($tokens)*);
 	}
 }
 
-pub use warning;
-pub use error;
-pub use task;
-pub use subtask;
-pub use pass;
-pub use fail;
+/// Ends the most recently created task with a custom symbol to be used
+/// to replace the spinner.
+#[macro_export]
+macro_rules! end_task {
+	($symbol:literal, $($tokens:tt)*) => {
+		let mut tasks = $crate::tool::log::_TASKS.lock().unwrap();
+		let message = format!($($tokens)*);
 
-pub fn _task(message: String) {
-	let mut task = TASK.lock().unwrap();
+		if let Some(task) = tasks.pop() {
+			// replace spinner with symbol
+			print!(concat!("\x1b[s\x1b[{}A\x1b[{}G", $symbol, " \x1b[K{}"), task.row_offset, tasks.len() * 5 + 1, message);
 
-	let task_running = task.is_some();
-	*task = Some(Task { subtasks: 0, subtask_running: false });
-
-	print!("\x1b[33;1m-\x1b[0m {message}");
-
-	if !task_running {
-		// spawn thread which automatically stops when the task is None
-		thread::spawn(move || {
-			let mut spinner = '-';
-
-			loop {
-				if let Some(task) = TASK.lock().unwrap().as_ref() {
-					// save cursor position
-					print!("\x1b[s");
-
-					// replace subtask spinner
-					if task.subtask_running && task.subtasks > 0 {
-						print!("\x1b[6G\x1b[33;1m{spinner}\x1b[0m");
-					}
-
-					let line_offset = if task.subtasks > 0 { task.subtasks } else { -1 };
-
-					// replace task spinner and restore cursor
-					print!("\x1b[{line_offset}A\x1b[0G\x1b[33;1m{spinner}\x1b[0m\x1b[u");
-					io::stdout().flush().unwrap();
-
-					// lock is dropped here, so sleep does not block
-				} else {
-					break;
-				}
-
-				spinner = match spinner {
-					'-' => '\\',
-					'\\' => '|',
-					'|' => '/',
-					'/' => '-',
-					_ => '-',
-				};
-
-				thread::sleep(Duration::from_millis(100));
+			if task.row_offset != -1 {
+				print!("\x1b[u");
 			}
-		});
+
+			::std::io::stdout().flush().unwrap();
+		}
+
+		drop(tasks);
 	}
 }
 
-pub fn _pass(message: String) {
-	let mut task_mutex = TASK.lock().unwrap();
+pub use task;
+pub use pass;
+pub use crate::warn;
+pub use fail;
+pub use end_task;
 
-	if let Some(task) = task_mutex.as_mut() {
-		// replace subtask spinner with check mark
-		if task.subtask_running && task.subtasks > 0 {
-			print!("\x1b[6G\x1b[32;1m✔\x1b[0m \x1b[0K{message}");
-			task.subtask_running = false;
-		} else {
-			// replace task spinner with check mark
-			println!("\x1b[s\x1b[{}A\x1b[0G\x1b[32;1m✔\x1b[0m \x1b[K{message}\x1b[u", task.subtasks);
-			*task_mutex = None;
-		}
-	}
-}
+#[doc(hidden)]
+pub fn _spin() {
+	let mut spinner = '-';
 
-pub fn _fail(message: String) {
-	let mut task_mutex = TASK.lock().unwrap();
+	loop {
+		let tasks = _TASKS.lock().unwrap();
 
-	if let Some(task) = task_mutex.as_mut() {
-		// replace subtask spinner with check mark
-		if task.subtask_running && task.subtasks > 0 {
-			print!("\x1b[6G\x1b[31;1m✘\x1b[0m \x1b[0K{message}");
-			task.subtask_running = false;
-		} else {
-			// replace task spinner with check mark
-			println!("\x1b[s\x1b[{}A\x1b[0G\x1b[31;1m✘\x1b[0m \x1b[K{message}\x1b[u", task.subtasks);
-			*task_mutex = None;
-		}
-	}
-}
-
-pub fn _subtask(message: String) {
-	if let Some(task) = TASK.lock().unwrap().as_mut() {
-		if task.subtasks > 0 {
-			print!("\x1b[s\x1b[-1A\x1b[3G┣━\x1b[u");
+		if tasks.len() == 0 {
+			break;
 		}
 
-		print!("\n  ┗━ \x1b[33;1m-\x1b[0m {message}");
+		let mut column = 1;
 
-		task.subtask_running = true;
-		task.subtasks += 1;
+		for task in tasks.iter() {
+			print!("\x1b[s\x1b[{}A\x1b[{column}G\x1b[33;1m{spinner}\x1b[0m\x1b[u", task.row_offset);
+			column += 5;
+		}
 
 		io::stdout().flush().unwrap();
+
+		spinner = match spinner {
+			'-' => '\\',
+			'\\' => '|',
+			'|' => '/',
+			'/' => '-',
+			_ => '-',
+		};
+
+		drop(tasks);
+		thread::sleep(Duration::from_millis(100));
 	}
 }
