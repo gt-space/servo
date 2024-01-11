@@ -12,6 +12,9 @@ pub mod extractors;
 /// Components related to communication with the flight computer
 pub mod flight;
 
+/// Components related to forwarding sessions and channel preparation/management.
+pub mod forwarding;
+
 /// Components related to interacting with the terminal and developer display
 pub mod interface;
 

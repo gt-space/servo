@@ -1,5 +1,3 @@
-mod log;
-
 mod deploy;
 mod emulate;
 mod export;

@@ -6,6 +6,7 @@ use std::path::Path;
 use crate::{
 	extractors::HostMap,
 	flight::FlightComputer,
+	forwarding::ForwardingAgent,
 	middleware::LoggingFactory,
 	routes,
 	Database,
@@ -19,14 +20,17 @@ pub async fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 	let flight_computer = FlightComputer::new();
 	let host_map = HostMap::new();
 
+	let forwarding_agent = ForwardingAgent::new(flight_computer.vehicle_state());
+
 	let database = Database::new(sql_connection);
 	database.migrate().await?;
 
 	tokio::spawn(flight_computer.auto_connect());
 	tokio::spawn(database.log_vehicle_state(&flight_computer));
 	tokio::spawn(flight_computer.receive_vehicle_state());
+	tokio::spawn(forwarding_agent.forward());
 
-	tokio::spawn(crate::interface::display(flight_computer.vehicle_state()));
+	// tokio::spawn(crate::interface::display(flight_computer.vehicle_state()));
 
 	HttpServer::new(move || {
 		let cors = Cors::default()
@@ -41,8 +45,8 @@ pub async fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 			.app_data(Data::new(database.clone()))
 			.app_data(Data::new(flight_computer.clone()))
 			.app_data(Data::new(host_map.clone()))
-			.route("/data/forward", web::post().to(routes::data::start_forwarding))
-			.route("/data/renew-forward", web::post().to(routes::data::renew_forwarding))
+			.app_data(Data::new(forwarding_agent.clone()))
+			.route("/data/forward", web::get().to(routes::data::forward))
 			.route("/data/export", web::post().to(routes::data::export))
 			.route("/admin/sql", web::post().to(routes::admin::execute_sql))
 			.route("/operator/command", web::post().to(routes::command::dispatch_operator_command))
