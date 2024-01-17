@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use crate::flight::FlightComputer;
 use include_dir::{include_dir, Dir};
 use rusqlite::Connection as SqlConnection;
-use std::{sync::Arc, future::Future};
+use std::{sync::Arc, future::Future, path::Path};
 use tokio::sync::Mutex;
 
 // include_dir is a separate library which evidently accesses files relative to
@@ -19,11 +19,11 @@ pub struct Database {
 }
 
 impl Database {
-	/// Constructs a new `Database` enclosing a raw SQL connection.
-	pub fn new(connection: SqlConnection) -> Self {
-		Database {
-			connection: Arc::new(Mutex::new(connection))
-		}
+	/// Opens a new `Database` at the path, enclosing a raw SQL connection.
+	pub fn open(path: &Path) -> rusqlite::Result<Self> {
+		Ok(Database {
+			connection: Arc::new(Mutex::new(SqlConnection::open(path)?))
+		})
 	}
 
 	/// Getter method which returns a reference to the enclosed conneciton.

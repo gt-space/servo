@@ -1,5 +1,5 @@
-use common::{Unit, ValveState, VehicleState};
-use crate::routes::mappings::NodeMapping;
+use common::{ControlMessage, NodeMapping, VehicleState};
+use crate::Database;
 use tokio::{sync::{Mutex, Notify}, io::{self, AsyncWriteExt}, net::{TcpStream, UdpSocket}};
 
 use std::{
@@ -15,15 +15,17 @@ use std::{
 pub struct FlightComputer {
 	connection: Arc<Mutex<Option<TcpStream>>>,
 	vehicle_state: Arc<(Mutex<VehicleState>, Notify)>,
+	database: Database,
 }
 
 impl FlightComputer {
 	/// Constructs a thread-safe wrapper around a TCP stream which can be
 	/// connected to the flight computer.
-	pub fn new() -> Self {
+	pub fn new(database: &Database) -> Self {
 		FlightComputer {
 			connection: Arc::new(Mutex::new(None)),
 			vehicle_state: Arc::new((Mutex::new(VehicleState::new()), Notify::new())),
+			database: database.clone()
 		}
 	}
 
@@ -79,68 +81,30 @@ impl FlightComputer {
 	}
 
 	/// Sends the given set of mappings to the flight computer.
-	pub async fn send_mappings(&self, mappings: &Vec<NodeMapping>) -> io::Result<()> {
-		use fs_protobuf_rust::compiled::mcfs::{
-			core::{mod_Message, Message},
-			mapping::ChannelMapping,
-			board::{ChannelIdentifier, ChannelType},
-		};
-
-		let mappings_proto = fs_protobuf_rust::compiled::mcfs::mapping::Mapping {
-			channel_mappings: mappings
-				.into_iter()
-				.map(|mapping| {
-					let channel_type = match mapping.channel_type.as_ref() {
-						"gpio" => ChannelType::GPIO,
-						"led" => ChannelType::LED,
-						"rail_3v3" => ChannelType::RAIL_3V3,
-						"rail_5v" => ChannelType::RAIL_5V,
-						"rail_5v5" => ChannelType::RAIL_5V5,
-						"rail_24v" => ChannelType::RAIL_24V,
-						"current_loop" => ChannelType::CURRENT_LOOP,
-						"differential_signal" => ChannelType::DIFFERENTIAL_SIGNAL,
-						"tc" => ChannelType::TC,
-						"valve_current" => ChannelType::VALVE_CURRENT,
-						"valve_voltage" => ChannelType::VALVE_VOLTAGE,
-						"rtd" => ChannelType::RTD,
-						"valve" => ChannelType::VALVE,
-						_ => panic!("invalid channel type"),
-					};
-			
-					ChannelMapping {
-						name: mapping.text_id.clone().into(),
-						channel_identifier: Some(ChannelIdentifier {
-							board_id: mapping.board_id,
-							channel_type,
-							channel: mapping.channel,
-						})
-					}
+	pub async fn send_mappings(&self) -> io::Result<()> {
+		let mappings = self.database
+			.connection()
+			.lock()
+			.await
+			.prepare("SELECT text_id, board_id, channel_type, channel, computer FROM NodeMappings WHERE active = TRUE")
+			.unwrap()
+			.query_and_then([], |row| {
+				Ok(NodeMapping {
+					text_id: row.get(0)?,
+					board_id: row.get(1)?,
+					channel_type: row.get(2)?,
+					channel: row.get(3)?,
+					computer: row.get(4)?,
 				})
-				.collect::<Vec<_>>()
-		};
-
-		let message = Message {
-			timestamp: None,
-			board_id: 0,
-			content: mod_Message::OneOfcontent::mapping(mappings_proto)
-		};
-
-		let serialized = quick_protobuf::serialize_into_vec(&message)
+			})
+			.unwrap()
+			.collect::<Result<Vec<NodeMapping>, rusqlite::Error>>()
 			.unwrap();
 
-		self.send_bytes(&serialized).await?;
-		
-		let mut vehicle_state = self.vehicle_state.0
-			.lock()
-			.await;
+		let message = ControlMessage::Mappings(mappings);
+		let serialized = postcard::to_allocvec(&message).unwrap();
 
-		for mapping in mappings {
-			if mapping.channel_type == "valve" {
-				vehicle_state.valve_states.insert(mapping.text_id.clone(), ValveState::NoData);
-			} else {
-				vehicle_state.sensor_readings.insert(mapping.text_id.clone(), Unit::NoData);
-			}
-		}
+		self.send_bytes(&serialized).await?;
 
 		Ok(())
 	}

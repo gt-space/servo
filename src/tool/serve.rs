@@ -1,6 +1,5 @@
 use actix_cors::Cors;
 use actix_web::{web::{self, Data}, App, HttpServer};
-use rusqlite::Connection as SqlConnection;
 use std::path::Path;
 
 use crate::{
@@ -16,13 +15,12 @@ use crate::{
 /// This function initializes database connections, spawns background tasks,
 /// and starts the HTTP server to serve the application upon request.
 pub async fn serve(servo_dir: &Path) -> anyhow::Result<()> {
-	let sql_connection = SqlConnection::open(servo_dir.join("database.sqlite"))?;
-	let flight_computer = FlightComputer::new();
+	let database = Database::open(&servo_dir.join("database.sqlite"))?;
+	let flight_computer = FlightComputer::new(&database);
 	let host_map = HostMap::new();
 
 	let forwarding_agent = ForwardingAgent::new(flight_computer.vehicle_state());
 
-	let database = Database::new(sql_connection);
 	database.migrate().await?;
 
 	tokio::spawn(flight_computer.auto_connect());
