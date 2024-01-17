@@ -1,4 +1,4 @@
-use crate::tool::log::{task, subtask, pass, fail};
+use jeflog::{task, pass, fail};
 // use ssh2::Session as SshSession;
 
 use std::{
@@ -66,7 +66,7 @@ struct Host {
 
 impl Host {
 	pub fn find(name: &'static str, host_type: HostType, user: &'static str, password: &'static str) -> Option<Self> {
-		subtask!("Locating \x1b[1m{name}\x1b[0m.");
+		task!("Locating \x1b[1m{name}\x1b[0m.");
 
 		let ip_address = dns_lookup::lookup_host(name)
 			// .or_else(|_| dns_lookup::lookup_host(&format!("{name}.local")))
@@ -110,7 +110,7 @@ impl Host {
 // }
 
 fn fetch_repository(repo: &str, cache_path: PathBuf, cache_display_path: &str) -> anyhow::Result<()> {
-	subtask!("Locating local cache of \x1b[1m{repo}\x1b[0m.");
+	task!("Locating local cache of \x1b[1m{repo}\x1b[0m.");
 
 	let repo_cache = cache_path.join(repo);
 
@@ -120,7 +120,7 @@ fn fetch_repository(repo: &str, cache_path: PathBuf, cache_display_path: &str) -
 
 	if repo_cache.exists() {
 		pass!("Using cache found at \x1b[1m{}\x1b[0m.", cache_display_path);
-		subtask!("Pulling latest version of branch \x1b[1mmain\x1b[0m from GitHub.");
+		task!("Pulling latest version of branch \x1b[1mmain\x1b[0m from GitHub.");
 
 		process::Command::new("git")
 			.args(["pull", "-C", &repo_cache.to_string_lossy()])
@@ -132,7 +132,7 @@ fn fetch_repository(repo: &str, cache_path: PathBuf, cache_display_path: &str) -
 
 		let clone_address = format!("git@github-research.gatech.edu:YJSP/{repo}");
 
-		subtask!("Cloning GitHub repository at \x1b[1m{clone_address}\x1b[0m.");
+		task!("Cloning GitHub repository at \x1b[1m{clone_address}\x1b[0m.");
 
 		let clone_succeeded = process::Command::new("git")
 			.args(["clone", &clone_address, &cache_string])
@@ -156,7 +156,7 @@ fn compile_for_target(repo_path: &Path, target: Target) -> anyhow::Result<()> {
 		.to_string_lossy()
 		.into_owned();
 
-	subtask!("Compiling for target \x1b[1m{}\x1b[0m.", target.triple());
+	task!("Compiling for target \x1b[1m{}\x1b[0m.", target.triple());
 
 	let compilation = process::Command::new("cross")
 		.args(["build", "--release"])
@@ -181,7 +181,7 @@ async fn transfer_to_target(host: &Host) {
 	let user = host.user;
 	let address = host.ip_address;
 
-	subtask!("Establishing SSH connection to \x1b[1m{user}@{address}\x1b[0m.");
+	task!("Establishing SSH connection to \x1b[1m{user}@{address}\x1b[0m.");
 
 	let stream = TcpStream::connect((address, 22)).unwrap();
 	// let mut session = SshSession::new().unwrap();
