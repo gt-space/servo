@@ -22,6 +22,10 @@ pub async fn run_sequence(
 				.map_err(|_| error::ErrorBadRequest("failed to parse raw bytes into valid string"))
 		)?;
 
-	flight_computer.send_sequence(&request.name, &decoded_script).await?;
+	flight_computer
+		.send_sequence(&request.name, &decoded_script)
+		.await
+		.map_err(|_| error::ErrorInternalServerError("failed to send sequence to flight computer"))?;
+
 	Ok(HttpResponse::Ok().finish())
 }

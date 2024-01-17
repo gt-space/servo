@@ -1,4 +1,4 @@
-use common::{ControlMessage, NodeMapping, VehicleState};
+use common::{ControlMessage, NodeMapping, VehicleState, Sequence};
 use crate::Database;
 use tokio::{sync::{Mutex, Notify}, io::{self, AsyncWriteExt}, net::{TcpStream, UdpSocket}};
 
@@ -81,13 +81,12 @@ impl FlightComputer {
 	}
 
 	/// Sends the given set of mappings to the flight computer.
-	pub async fn send_mappings(&self) -> io::Result<()> {
+	pub async fn send_mappings(&self) -> anyhow::Result<()> {
 		let mappings = self.database
 			.connection()
 			.lock()
 			.await
-			.prepare("SELECT text_id, board_id, channel_type, channel, computer FROM NodeMappings WHERE active = TRUE")
-			.unwrap()
+			.prepare("SELECT text_id, board_id, channel_type, channel, computer FROM NodeMappings WHERE active = TRUE")?
 			.query_and_then([], |row| {
 				Ok(NodeMapping {
 					text_id: row.get(0)?,
@@ -96,13 +95,11 @@ impl FlightComputer {
 					channel: row.get(3)?,
 					computer: row.get(4)?,
 				})
-			})
-			.unwrap()
-			.collect::<Result<Vec<NodeMapping>, rusqlite::Error>>()
-			.unwrap();
+			})?
+			.collect::<Result<Vec<NodeMapping>, rusqlite::Error>>()?;
 
 		let message = ControlMessage::Mappings(mappings);
-		let serialized = postcard::to_allocvec(&message).unwrap();
+		let serialized = postcard::to_allocvec(&message)?;
 
 		self.send_bytes(&serialized).await?;
 
@@ -110,23 +107,16 @@ impl FlightComputer {
 	}
 
 	/// Sends the given sequence to the flight computer to be executed.
-	pub async fn send_sequence(&self, name: &str, script: &str) -> io::Result<()> {
-		use fs_protobuf_rust::compiled::mcfs::{
-			core::{mod_Message, Message},
-			sequence::Sequence
+	pub async fn send_sequence(&self, name: &str, script: &str) -> anyhow::Result<()> {
+		let sequence = Sequence {
+			name: name.to_owned(),
+			script: script.to_owned(),
 		};
 
-		let message = Message {
-			timestamp: None,
-			board_id: 0,
-			content: mod_Message::OneOfcontent::sequence(Sequence {
-				name: name.into(),
-				script: script.into(),
-			})
-		};
-		
-		self.send_bytes(&quick_protobuf::serialize_into_vec(&message).unwrap()).await?;
+		let message = ControlMessage::Sequence(sequence);
+		let serialized = postcard::to_allocvec(&message)?;
 
+		self.send_bytes(&serialized).await?;
 		Ok(())
 	}
 

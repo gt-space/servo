@@ -64,31 +64,33 @@ pub async fn post_mappings(
 	flight_computer: Data<FlightComputer>,
 	request: Json<SetMappingsRequest>,
 ) -> actix_web::Result<HttpResponse> {
-	{
-		let database = database.connection().lock().await;
+	let database = database.connection().lock().await;
 
+	database
+		.execute("DELETE FROM NodeMappings WHERE configuration_id = ?1", [&request.configuration_id])
+		.map_err(|_| error::ErrorInternalServerError("sql error"))?;
+
+	for mapping in &request.mappings {
 		database
-			.execute("DELETE FROM NodeMappings WHERE configuration_id = ?1", [&request.configuration_id])
-			.map_err(|_| error::ErrorInternalServerError("sql error"))?;
-
-		for mapping in &request.mappings {
-			database
-				.execute("
-					INSERT INTO NodeMappings (configuration_id, text_id, board_id, channel_type, channel, computer)
-					VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-				", rusqlite::params![
-					request.configuration_id,
-					mapping.text_id,
-					mapping.board_id,
-					mapping.channel_type,
-					mapping.channel,
-					mapping.computer,
-				])
-				.map_err(|err| error::ErrorInternalServerError(format!("sql error: {}", err.to_string())))?;
-		}
+			.execute("
+				INSERT INTO NodeMappings (configuration_id, text_id, board_id, channel_type, channel, computer)
+				VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+			", rusqlite::params![
+				request.configuration_id,
+				mapping.text_id,
+				mapping.board_id,
+				mapping.channel_type,
+				mapping.channel,
+				mapping.computer,
+			])
+			.map_err(|err| error::ErrorInternalServerError(format!("sql error: {}", err.to_string())))?;
 	}
 
-	flight_computer.send_mappings().await?;
+	flight_computer
+		.send_mappings()
+		.await
+		.map_err(|_| error::ErrorInternalServerError("failed to send mappings to flight computer"))?;
+
 	Ok(HttpResponse::Ok().finish())
 }
 
@@ -98,30 +100,32 @@ pub async fn put_mappings(
 	flight_computer: Data<FlightComputer>,
 	request: Json<SetMappingsRequest>,
 ) -> actix_web::Result<HttpResponse> {
-	{
-		let database = database.connection().lock().await;
+	let database = database.connection().lock().await;
 
-		for mapping in &request.mappings {
-			database.execute("
-				INSERT INTO NodeMappings (configuration_id, text_id, board_id, channel_type, channel, computer)
-				VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-				ON CONFLICT (configuration_id, text_id) DO UPDATE SET
-					board_id = excluded.board_id,
-					channel = excluded.channel,
-					channel_type = excluded.channel_type,
-					computer = excluded.computer
-			", rusqlite::params![
-				request.configuration_id,
-				mapping.text_id,
-				mapping.board_id,
-				mapping.channel_type,
-				mapping.channel,
-				mapping.computer,
-			]).map_err(|_| error::ErrorInternalServerError("sql error"))?;
-		}
+	for mapping in &request.mappings {
+		database.execute("
+			INSERT INTO NodeMappings (configuration_id, text_id, board_id, channel_type, channel, computer)
+			VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+			ON CONFLICT (configuration_id, text_id) DO UPDATE SET
+				board_id = excluded.board_id,
+				channel = excluded.channel,
+				channel_type = excluded.channel_type,
+				computer = excluded.computer
+		", rusqlite::params![
+			request.configuration_id,
+			mapping.text_id,
+			mapping.board_id,
+			mapping.channel_type,
+			mapping.channel,
+			mapping.computer,
+		]).map_err(|_| error::ErrorInternalServerError("sql error"))?;
 	}
 
-	flight_computer.send_mappings().await?;
+	flight_computer
+		.send_mappings()
+		.await
+		.map_err(|_| error::ErrorInternalServerError("failed to send mappings to flight computer"))?;
+
 	Ok(HttpResponse::Ok().finish())
 }
 
@@ -135,6 +139,7 @@ pub struct ActiveConfiguration {
 pub async fn activate_configuration(
 	database: Data<Database>,
 	request: Json<ActiveConfiguration>,
+	flight_computer: Data<FlightComputer>,
 ) -> actix_web::Result<HttpResponse> {
 	let database = database.connection().lock().await;
 
@@ -147,6 +152,11 @@ pub async fn activate_configuration(
 		.map_err(|_| error::ErrorInternalServerError("sql error"))?;
 
 	if rows_updated > 0 {
+		flight_computer
+			.send_mappings()
+			.await
+			.map_err(|_| error::ErrorInternalServerError("failed to send mappings to flight computer"))?;
+
 		Ok(HttpResponse::Ok().finish())
 	} else {
 		Err(error::ErrorBadRequest("configuration_id does not exist"))
