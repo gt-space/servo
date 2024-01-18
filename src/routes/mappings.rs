@@ -1,5 +1,6 @@
 use actix_web::{error, web::{Data, Json}, HttpResponse};
 use common::NodeMapping;
+use rusqlite::params;
 use crate::{Database, flight::FlightComputer};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -119,6 +120,50 @@ pub async fn put_mappings(
 			mapping.channel,
 			mapping.computer,
 		]).map_err(|_| error::ErrorInternalServerError("sql error"))?;
+	}
+
+	flight_computer
+		.send_mappings()
+		.await
+		.map_err(|_| error::ErrorInternalServerError("failed to send mappings to flight computer"))?;
+
+	Ok(HttpResponse::Ok().finish())
+}
+
+/// The request struct used with the route function to delete mappings.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DeleteMappingsRequest {
+	/// The configuration ID of the mappings being deleted.
+	pub configuration_id: String,
+
+	/// The mappings to be deleted. If this is `None`, then all mappings
+	/// with the corresponding configuration ID will be deleted.
+	pub mappings: Option<Vec<NodeMapping>>,
+}
+
+/// A route function which deletes the specified mappings.
+pub async fn delete_mappings(
+	database: Data<Database>,
+	flight_computer: Data<FlightComputer>,
+	request: Json<DeleteMappingsRequest>,
+) -> actix_web::Result<HttpResponse> {
+	let database = database.connection().lock().await;
+
+	// if the mappings are specified, then only delete them
+	// if not, then delete all mappings for that configuration (thus deleting the config)
+	if let Some(mappings) = &request.mappings {
+		for mapping in mappings {
+			database
+				.execute(
+					"DELETE FROM NodeMappings WHERE configuration_id = ?1 AND text_id = ?2",
+					params![request.configuration_id, mapping.text_id]
+				)
+				.map_err(|error| error::ErrorInternalServerError(error.to_string()))?;
+		}
+	} else {
+		database
+			.execute("DELETE FROM NodeMappings WHERE configuration_id = ?1", params![request.configuration_id])
+			.map_err(|error| error::ErrorInternalServerError(error.to_string()))?;
 	}
 
 	flight_computer
