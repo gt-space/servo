@@ -6,6 +6,9 @@
 pub mod database;
 pub use database::Database;
 
+/// A collection of convenient functions for turning converting various error types.
+pub mod error;
+
 /// Actix-web extractors available to the various server routes.
 pub mod extractors;
 
