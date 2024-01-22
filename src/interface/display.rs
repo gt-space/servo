@@ -107,7 +107,6 @@ pub async fn display(vehicle_state: Arc<(Mutex<VehicleState>, Notify)>) {
 		
 		// display network statistics
 
-
 		if let Some(vehicle_state) = vehicle_state.upgrade() {
 			// display sensor data
 			let vehicle_state = vehicle_state.0
@@ -124,7 +123,12 @@ pub async fn display(vehicle_state: Arc<(Mutex<VehicleState>, Notify)>) {
 			sensor_readings.sort_by(|a, b| a.0.cmp(b.0));
 
 			for (i, (name, value)) in sensor_readings.iter().enumerate() {
-				sensors_container.write_line(i, &format!("{name}: \x1b[1m{value}\x1b[0m"));
+				let pretty_value = value
+					.as_ref()
+					.map(ToPrettyString::to_pretty_string)
+					.unwrap_or("\x1b[1;31mno data\x1b[0m".to_owned());
+
+				sensors_container.write_line(i, &format!("{name}: {pretty_value}"));
 			}
 
 			// display valve states
@@ -132,7 +136,12 @@ pub async fn display(vehicle_state: Arc<(Mutex<VehicleState>, Notify)>) {
 			Terminal::draw(&valves_container);
 
 			for (i, (name, state)) in vehicle_state.valve_states.iter().enumerate() {
-				valves_container.write_line(i, &format!("{name}: \x1b[1m{}\x1b[0m", state.to_pretty_string()));
+				let pretty_state = state
+					.as_ref()
+					.map(ToPrettyString::to_pretty_string)
+					.unwrap_or("\x1b[1;31mno data\x1b[0m".to_owned());
+
+				valves_container.write_line(i, &format!("{name}: {pretty_state}"));
 			}
 		} else {
 			break;
