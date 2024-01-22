@@ -83,7 +83,9 @@ pub async fn export(
 					let reading = state.sensor_readings.get(name);
 					content += ",";
 
-					if let Some(reading) = reading {
+					// currently, if there is no data here, the column is empty.
+					// we may want to change this.
+					if let Some(Some(reading)) = reading {
 						content += &reading.to_string();
 					}
 				}
@@ -92,7 +94,8 @@ pub async fn export(
 					let valve_state = state.valve_states.get(name);
 					content += ",";
 
-					if let Some(valve_state) = valve_state {
+					// see comment in sensor readings above.
+					if let Some(Some(valve_state)) = valve_state {
 						content += &valve_state.to_string();
 					}
 				}
