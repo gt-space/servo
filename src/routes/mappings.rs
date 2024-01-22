@@ -87,6 +87,8 @@ pub async fn post_mappings(
 			.map_err(|err| error::ErrorInternalServerError(format!("sql error: {}", err.to_string())))?;
 	}
 
+	drop(database);
+
 	flight_computer
 		.send_mappings()
 		.await
@@ -121,6 +123,8 @@ pub async fn put_mappings(
 			mapping.computer,
 		]).map_err(|_| error::ErrorInternalServerError("sql error"))?;
 	}
+
+	drop(database);
 
 	flight_computer
 		.send_mappings()
@@ -165,6 +169,8 @@ pub async fn delete_mappings(
 			.execute("DELETE FROM NodeMappings WHERE configuration_id = ?1", params![request.configuration_id])
 			.map_err(|error| error::ErrorInternalServerError(error.to_string()))?;
 	}
+
+	drop(database);
 
 	flight_computer
 		.send_mappings()
