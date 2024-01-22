@@ -1,5 +1,6 @@
 use common::{ControlMessage, NodeMapping, VehicleState, Sequence};
 use crate::Database;
+use jeflog::warn;
 use tokio::{sync::{Mutex, Notify}, io::{self, AsyncWriteExt}, net::{TcpStream, UdpSocket}};
 
 use std::{
@@ -107,12 +108,7 @@ impl FlightComputer {
 	}
 
 	/// Sends the given sequence to the flight computer to be executed.
-	pub async fn send_sequence(&self, name: &str, script: &str) -> anyhow::Result<()> {
-		let sequence = Sequence {
-			name: name.to_owned(),
-			script: script.to_owned(),
-		};
-
+	pub async fn send_sequence(&self, sequence: Sequence) -> anyhow::Result<()> {
 		let message = ControlMessage::Sequence(sequence);
 		let serialized = postcard::to_allocvec(&message)?;
 
@@ -136,10 +132,15 @@ impl FlightComputer {
 							continue;
 						}
 
-						if let Ok(new_state) = postcard::from_bytes::<VehicleState>(&frame_buffer[..datagram_size]) {
-							*vehicle_state.0.lock().await = new_state;
-							vehicle_state.1.notify_waiters();
-						}
+						let new_state = postcard::from_bytes::<VehicleState>(&frame_buffer[..datagram_size]);
+
+						match new_state {
+							Ok(state) => {
+								*vehicle_state.0.lock().await = state;
+								vehicle_state.1.notify_waiters();
+							},
+							Err(error) => warn!("Failed to deserialize vehicle state: {error}"),
+						};
 					},
 					Err(error) => {
 						// Windows throws this error when the buffer is not large enough.
