@@ -28,7 +28,7 @@ pub async fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 	tokio::spawn(flight_computer.receive_vehicle_state());
 	tokio::spawn(forwarding_agent.forward());
 
-	// tokio::spawn(crate::interface::display(flight_computer.vehicle_state()));
+	tokio::spawn(crate::interface::display(flight_computer.vehicle_state()));
 
 	HttpServer::new(move || {
 		let cors = Cors::default()
@@ -54,7 +54,10 @@ pub async fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 			.route("/operator/mappings", web::delete().to(routes::mappings::delete_mappings))
 			.route("/operator/active-configuration", web::get().to(routes::mappings::get_active_configuration))
 			.route("/operator/active-configuration", web::post().to(routes::mappings::activate_configuration))
-			.route("/operator/sequence", web::post().to(routes::sequence::run_sequence))
+			.route("/operator/sequence", web::get().to(routes::sequence::retrieve_sequences))
+			.route("/operator/sequence", web::put().to(routes::sequence::save_sequence))
+			.route("/operator/sequence", web::delete().to(routes::sequence::delete_sequence))
+			.route("/operator/run-sequence", web::post().to(routes::sequence::run_sequence))
 	}).bind(("0.0.0.0", 7200))?
 		.run()
 		.await?;
