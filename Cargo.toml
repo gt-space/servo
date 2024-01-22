@@ -10,7 +10,7 @@ actix-web = "4.2"
 anyhow = "1.0"
 base64 = "0.13"
 clap = "4.4.6"
-common = { git = "ssh://git@github-research.gatech.edu/YJSP/common" }
+common = { git = "ssh://git@github-research.gatech.edu/YJSP/common", features = ["rusqlite"] }
 dns-lookup = "2.0"
 fs-protobuf-rust = { git = "ssh://git@github-research.gatech.edu/YJSP/fs-protobuf-rust" }
 include_dir = "0.7"
