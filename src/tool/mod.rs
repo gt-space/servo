@@ -4,6 +4,7 @@ mod export;
 mod run;
 mod serve;
 mod sql;
+mod upload;
 
 pub use deploy::deploy;
 pub use emulate::emulate;
@@ -11,3 +12,4 @@ pub use export::export;
 pub use run::run;
 pub use serve::serve;
 pub use sql::sql;
+pub use upload::upload;

@@ -1,6 +1,7 @@
-use servo::tool;
-use std::{env, fs, path::Path, process};
 use clap::{Command, Arg};
+use jeflog::fail;
+use servo::tool;
+use std::{env, fs, path::{Path, PathBuf}, process};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -68,6 +69,15 @@ async fn main() -> anyhow::Result<()> {
 						.required(true)
 				)
 		)
+		.subcommand(
+			Command::new("upload")
+				.about("Uploads a Python sequence to the control server to be stored for future use.")
+				.arg(
+					Arg::new("sequence_path")
+						.value_parser(clap::value_parser!(PathBuf))
+						.required(true)
+				)
+		)
 		.get_matches();
 	
 	match matches.subcommand() {
@@ -83,8 +93,9 @@ async fn main() -> anyhow::Result<()> {
 		Some(("run", args)) => tool::run(args.get_one::<String>("path").unwrap()).await?,
 		Some(("serve", _)) => tool::serve(&servo_dir).await?,
 		Some(("sql", args)) => tool::sql(args.get_one::<String>("raw_sql").unwrap()).await?,
+		Some(("upload", args)) => tool::upload(args.get_one::<PathBuf>("sequence_path").unwrap()).await?,
 		_ => {
-			eprintln!("Error: Invalid command. Please check the command you entered.");
+			fail!("Invalid command. Please check the command you entered.");
 			process::exit(1);
 		}
 	};
