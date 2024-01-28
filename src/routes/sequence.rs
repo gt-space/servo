@@ -1,5 +1,5 @@
 use actix_web::{web::{Data, Json}, HttpResponse};
-use common::Sequence;
+use common::comm::Sequence;
 use crate::{Database, flight::FlightComputer, error::{bad_request, internal}};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};

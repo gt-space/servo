@@ -1,5 +1,5 @@
 use actix_web::{error, HttpResponse, Result, web::{Data, Json}};
-use common::VehicleState;
+use common::comm::VehicleState;
 use crate::{Database, forwarding::ForwardingAgent};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, sync::Arc};
@@ -85,7 +85,7 @@ pub async fn export(
 
 					// currently, if there is no data here, the column is empty.
 					// we may want to change this.
-					if let Some(Some(reading)) = reading {
+					if let Some(reading) = reading {
 						content += &reading.to_string();
 					}
 				}
@@ -95,7 +95,7 @@ pub async fn export(
 					content += ",";
 
 					// see comment in sensor readings above.
-					if let Some(Some(valve_state)) = valve_state {
+					if let Some(valve_state) = valve_state {
 						content += &valve_state.to_string();
 					}
 				}

@@ -1,4 +1,4 @@
-use common::{ControlMessage, NodeMapping, VehicleState, Sequence};
+use common::comm::{FlightControlMessage, NodeMapping, VehicleState, Sequence};
 use crate::Database;
 use jeflog::warn;
 use tokio::{sync::{Mutex, Notify}, io::{self, AsyncWriteExt}, net::{TcpStream, UdpSocket}};
@@ -99,7 +99,7 @@ impl FlightComputer {
 			})?
 			.collect::<Result<Vec<NodeMapping>, rusqlite::Error>>()?;
 
-		let message = ControlMessage::Mappings(mappings);
+		let message = FlightControlMessage::Mappings(mappings);
 		let serialized = postcard::to_allocvec(&message)?;
 
 		self.send_bytes(&serialized).await?;
@@ -109,7 +109,7 @@ impl FlightComputer {
 
 	/// Sends the given sequence to the flight computer to be executed.
 	pub async fn send_sequence(&self, sequence: Sequence) -> anyhow::Result<()> {
-		let message = ControlMessage::Sequence(sequence);
+		let message = FlightControlMessage::Sequence(sequence);
 		let serialized = postcard::to_allocvec(&message)?;
 
 		self.send_bytes(&serialized).await?;

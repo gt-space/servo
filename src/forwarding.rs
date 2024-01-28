@@ -1,5 +1,5 @@
 use actix_web::web;
-use common::VehicleState;
+use common::comm::VehicleState;
 use jeflog::warn;
 use std::{future::Future, sync::Arc, time::Duration, io};
 use tokio::{sync::{broadcast, Mutex, Notify}, time::MissedTickBehavior};

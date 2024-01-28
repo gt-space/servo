@@ -1,5 +1,5 @@
 use actix_web::{error, web::{Data, Json}, HttpResponse};
-use common::NodeMapping;
+use common::comm::NodeMapping;
 use rusqlite::params;
 use crate::{Database, flight::FlightComputer};
 use serde::{Deserialize, Serialize};
@@ -74,8 +74,8 @@ pub async fn post_mappings(
 	for mapping in &request.mappings {
 		database
 			.execute("
-				INSERT INTO NodeMappings (configuration_id, text_id, board_id, channel_type, channel, computer)
-				VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+				INSERT INTO NodeMappings (configuration_id, text_id, board_id, channel_type, channel, computer, active)
+				VALUES (?1, ?2, ?3, ?4, ?5, ?6, TRUE)
 			", rusqlite::params![
 				request.configuration_id,
 				mapping.text_id,
@@ -107,13 +107,14 @@ pub async fn put_mappings(
 
 	for mapping in &request.mappings {
 		database.execute("
-			INSERT INTO NodeMappings (configuration_id, text_id, board_id, channel_type, channel, computer)
-			VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+			INSERT INTO NodeMappings (configuration_id, text_id, board_id, channel_type, channel, computer, active)
+			VALUES (?1, ?2, ?3, ?4, ?5, ?6, TRUE)
 			ON CONFLICT (configuration_id, text_id) DO UPDATE SET
 				board_id = excluded.board_id,
 				channel = excluded.channel,
 				channel_type = excluded.channel_type,
-				computer = excluded.computer
+				computer = excluded.computer,
+				active = excluded.active
 		", rusqlite::params![
 			request.configuration_id,
 			mapping.text_id,

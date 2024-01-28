@@ -1,4 +1,4 @@
-use common::{VehicleState, ToPrettyString};
+use common::{ToPrettyString, comm::VehicleState};
 use std::{time::Duration, ops::Div, io::{self, Write}, sync::Arc};
 use sysinfo::{System, SystemExt, CpuExt};
 use tokio::sync::{Mutex, Notify};
@@ -123,10 +123,7 @@ pub async fn display(vehicle_state: Arc<(Mutex<VehicleState>, Notify)>) {
 			sensor_readings.sort_by(|a, b| a.0.cmp(b.0));
 
 			for (i, (name, value)) in sensor_readings.iter().enumerate() {
-				let pretty_value = value
-					.as_ref()
-					.map(ToPrettyString::to_pretty_string)
-					.unwrap_or("\x1b[1;31mno data\x1b[0m".to_owned());
+				let pretty_value = value.to_pretty_string();
 
 				sensors_container.write_line(i, &format!("{name}: {pretty_value}"));
 			}
@@ -136,10 +133,7 @@ pub async fn display(vehicle_state: Arc<(Mutex<VehicleState>, Notify)>) {
 			Terminal::draw(&valves_container);
 
 			for (i, (name, state)) in vehicle_state.valve_states.iter().enumerate() {
-				let pretty_state = state
-					.as_ref()
-					.map(ToPrettyString::to_pretty_string)
-					.unwrap_or("\x1b[1;31mno data\x1b[0m".to_owned());
+				let pretty_state = state.to_pretty_string();
 
 				valves_container.write_line(i, &format!("{name}: {pretty_state}"));
 			}
