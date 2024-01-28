@@ -203,6 +203,8 @@ pub async fn activate_configuration(
 		.execute("UPDATE NodeMappings SET active = TRUE WHERE configuration_id = ?1", [&request.configuration_id])
 		.map_err(|_| error::ErrorInternalServerError("sql error"))?;
 
+	drop(database);
+
 	if rows_updated > 0 {
 		flight_computer
 			.send_mappings()
