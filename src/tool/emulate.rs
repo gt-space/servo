@@ -11,12 +11,13 @@ pub async fn emulate() -> anyhow::Result<()> {
 	mock_vehicle_state.valve_states.insert("BBV".to_owned(), ValveState::Closed);
 	mock_vehicle_state.valve_states.insert("SWV".to_owned(), ValveState::CommandedClosed);
  
-	let raw = postcard::to_allocvec(&mock_vehicle_state)?;
+	let mut raw = postcard::to_allocvec(&mock_vehicle_state)?;
 	postcard::from_bytes::<VehicleState>(&raw).unwrap();
 
 	loop {
 		mock_vehicle_state.sensor_readings.insert("KBPT".to_owned(), Measurement { value: rand::random::<f64>() * 120.0, unit: Unit::Psi });
 		mock_vehicle_state.sensor_readings.insert("WTPT".to_owned(), Measurement { value: rand::random::<f64>() * 1000.0, unit: Unit::Psi });
+		raw = postcard::to_allocvec(&mock_vehicle_state)?;
 
 		data_socket.send(&raw).await?;
 	}
