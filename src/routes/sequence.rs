@@ -4,11 +4,24 @@ use crate::{Database, flight::FlightComputer, error::{bad_request, internal}};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
-/// Request struct for setting/sending sequences.
+/// Used in sequences response struct to attach the configuration ID.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SequenceWithConfiguration {
+	/// The name of the sequence.
+	pub name: String,
+
+	/// The Python sequence script.
+	pub script: String,
+
+	/// The ID of the configuration associated with the sequence.
+	pub configuration_id: String,
+}
+
+/// Response struct for getting the sequences stored in the database.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RetrieveSequenceResponse {
 	/// The collection of all sequences present on the control server.
-	pub sequences: Vec<Sequence>
+	pub sequences: Vec<SequenceWithConfiguration>
 }
 
 /// Route function to retrieve all sequences from the database.
@@ -16,16 +29,17 @@ pub async fn retrieve_sequences(database: Data<Database>) -> actix_web::Result<J
 	let database = database.connection().lock().await;
 
 	let sequences = database
-		.prepare("SELECT name, configuration_id, script FROM Sequences")
+		.prepare("SELECT name, script, configuration_id FROM Sequences")
 		.map_err(internal)?
 		.query_map([], |row| {
-			Ok(Sequence {
+			Ok(SequenceWithConfiguration {
 				name: row.get(0)?,
-				script: row.get(2)?,
+				script: row.get(1)?,
+				configuration_id: row.get(2)?,
 			})
 		})
 		.map_err(internal)?
-		.collect::<Result<Vec<Sequence>, _>>()
+		.collect::<Result<Vec<_>, _>>()
 		.map_err(internal)?;
 
 	Ok(Json(RetrieveSequenceResponse { sequences }))
