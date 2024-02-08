@@ -14,7 +14,7 @@ pub struct SequenceWithConfiguration {
 	pub script: String,
 
 	/// The ID of the configuration associated with the sequence.
-	pub configuration_id: String,
+	pub configuration_id: Option<String>,
 }
 
 /// Response struct for getting the sequences stored in the database.
