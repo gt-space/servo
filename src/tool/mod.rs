@@ -1,3 +1,4 @@
+mod clean;
 mod deploy;
 mod emulate;
 mod export;
@@ -6,6 +7,7 @@ mod serve;
 mod sql;
 mod upload;
 
+pub use clean::clean;
 pub use deploy::deploy;
 pub use emulate::emulate;
 pub use export::export;
