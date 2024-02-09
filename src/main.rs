@@ -21,6 +21,10 @@ async fn main() -> anyhow::Result<()> {
 		.about("Servo command line tool")
 		.subcommand_required(true)
 		.subcommand(
+			Command::new("clean")
+				.about("Cleans the Servo directory and database.")
+		)
+		.subcommand(
 			Command::new("deploy")
 				.about("Deploys YJSP software to all available computers on the network.")
 		)
@@ -81,6 +85,7 @@ async fn main() -> anyhow::Result<()> {
 		.get_matches();
 	
 	match matches.subcommand() {
+		Some(("clean", _)) => tool::clean(&servo_dir).await?,
 		Some(("deploy", _)) => tool::deploy().await?,
 		Some(("emulate", _)) => tool::emulate().await?,
 		Some(("export", args)) => {
