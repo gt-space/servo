@@ -514,7 +514,7 @@ name = "common"
 version = "0.1.0"
 source = "git+ssh://git@github-research.gatech.edu/YJSP/common#fc55b4c88e40b5e4785348892b05f20ed5c8a6a5"
 dependencies = [
- "jeflog 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "jeflog",
  "postcard",
  "rusqlite",
  "serde",
@@ -1063,11 +1063,6 @@ name = "jeflog"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0a6182dece9987ecc02fee5d5147d124638739ce747d8670929689db68a83202"
-
-[[package]]
-name = "jeflog"
-version = "0.1.0"
-source = "git+ssh://git@github.com/jeffcshelton/jeflog#655675387fabc51f8ff05b283bb1055942ed63dc"
 
 [[package]]
 name = "jobserver"
@@ -1784,7 +1779,7 @@ dependencies = [
  "dns-lookup",
  "fs-protobuf-rust",
  "include_dir",
- "jeflog 0.1.0 (git+ssh://git@github.com/jeffcshelton/jeflog)",
+ "jeflog",
  "postcard",
  "quick-protobuf",
  "rand",
