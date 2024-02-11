@@ -1,7 +1,7 @@
 use actix_web::{error, web::{Data, Json}, HttpResponse};
 use common::comm::NodeMapping;
 use rusqlite::params;
-use crate::{Database, flight::FlightComputer};
+use crate::{error::internal, flight::FlightComputer, Database};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -17,7 +17,21 @@ pub async fn get_mappings(database: Data<Database>) -> actix_web::Result<Json<se
 	let database = database.connection().lock().await;
 
 	let mappings = database
-		.prepare("SELECT configuration_id, text_id, board_id, channel_type, channel, computer FROM NodeMappings")
+		.prepare("
+			SELECT
+				configuration_id,
+				text_id,
+				board_id,
+				channel_type,
+				channel,
+				computer,
+				scale,
+				offset,
+				connected_threshold,
+				powered_threshold,
+				normally_closed
+			FROM NodeMappings
+		")
 		.map_err(|_| error::ErrorInternalServerError("error preparing sql statement"))?
 		.query_and_then([], |row| {
 			let configuration_id = row.get(0)?;
@@ -28,6 +42,11 @@ pub async fn get_mappings(database: Data<Database>) -> actix_web::Result<Json<se
 				channel_type: row.get(3)?,
 				channel: row.get(4)?,
 				computer: row.get(5)?,
+				scale: row.get(6)?,
+				offset: row.get(7)?,
+				connected_threshold: row.get(8)?,
+				powered_threshold: row.get(9)?,
+				normally_closed: row.get(10)?,
 			};
 
 			Ok((configuration_id, mapping))
@@ -69,13 +88,25 @@ pub async fn post_mappings(
 
 	database
 		.execute("DELETE FROM NodeMappings WHERE configuration_id = ?1", [&request.configuration_id])
-		.map_err(|_| error::ErrorInternalServerError("sql error"))?;
+		.map_err(internal)?;
 
 	for mapping in &request.mappings {
 		database
 			.execute("
-				INSERT INTO NodeMappings (configuration_id, text_id, board_id, channel_type, channel, computer, active)
-				VALUES (?1, ?2, ?3, ?4, ?5, ?6, TRUE)
+				INSERT INTO NodeMappings (
+					configuration_id,
+					text_id,
+					board_id,
+					channel_type,
+					channel,
+					computer,
+					scale,
+					offset,
+					connected_threshold,
+					powered_threshold,
+					normally_closed,
+					active
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, TRUE)
 			", rusqlite::params![
 				request.configuration_id,
 				mapping.text_id,
@@ -83,6 +114,11 @@ pub async fn post_mappings(
 				mapping.channel_type,
 				mapping.channel,
 				mapping.computer,
+				mapping.scale,
+				mapping.offset,
+				mapping.connected_threshold,
+				mapping.powered_threshold,
+				mapping.normally_closed,
 			])
 			.map_err(|err| error::ErrorInternalServerError(format!("sql error: {}", err.to_string())))?;
 	}
@@ -107,13 +143,30 @@ pub async fn put_mappings(
 
 	for mapping in &request.mappings {
 		database.execute("
-			INSERT INTO NodeMappings (configuration_id, text_id, board_id, channel_type, channel, computer, active)
-			VALUES (?1, ?2, ?3, ?4, ?5, ?6, TRUE)
+			INSERT INTO NodeMappings (
+				configuration_id,
+				text_id,
+				board_id,
+				channel_type,
+				channel,
+				computer,
+				scale,
+				offset,
+				connected_threshold,
+				powered_threshold,
+				normally_closed,
+				active
+			) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, TRUE)
 			ON CONFLICT (configuration_id, text_id) DO UPDATE SET
 				board_id = excluded.board_id,
 				channel = excluded.channel,
 				channel_type = excluded.channel_type,
 				computer = excluded.computer,
+				scale = excluded.scale,
+				offset = excluded.offset,
+				connected_threshold = excluded.connected_threshold,
+				powered_threshold = excluded.powered_threshold,
+				normally_closed = excluded.normally_closed,
 				active = excluded.active
 		", rusqlite::params![
 			request.configuration_id,
@@ -122,6 +175,11 @@ pub async fn put_mappings(
 			mapping.channel_type,
 			mapping.channel,
 			mapping.computer,
+			mapping.scale,
+			mapping.offset,
+			mapping.connected_threshold,
+			mapping.powered_threshold,
+			mapping.normally_closed,
 		]).map_err(|_| error::ErrorInternalServerError("sql error"))?;
 	}
 

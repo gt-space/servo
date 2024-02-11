@@ -64,6 +64,9 @@ impl FlightComputer {
 
 			*connection.lock_owned().await = Some(TcpStream::from_std(flight_stream)?);
 			println!("connected to the flight computer");
+
+			// TODO:
+			// self.send_mappings().await;
 			Ok(())
 		}
 	}
@@ -87,7 +90,20 @@ impl FlightComputer {
 			.connection()
 			.lock()
 			.await
-			.prepare("SELECT text_id, board_id, channel_type, channel, computer FROM NodeMappings WHERE active = TRUE")?
+			.prepare("
+				SELECT
+					text_id,
+					board_id,
+					channel_type,
+					channel,
+					computer,
+					scale,
+					offset,
+					connected_threshold,
+					powered_threshold,
+					normally_closed
+				FROM NodeMappings WHERE active = TRUE
+			")?
 			.query_and_then([], |row| {
 				Ok(NodeMapping {
 					text_id: row.get(0)?,
@@ -95,6 +111,11 @@ impl FlightComputer {
 					channel_type: row.get(2)?,
 					channel: row.get(3)?,
 					computer: row.get(4)?,
+					scale: row.get(5)?,
+					offset: row.get(6)?,
+					connected_threshold: row.get(7)?,
+					powered_threshold: row.get(8)?,
+					normally_closed: row.get(9)?,
 				})
 			})?
 			.collect::<Result<Vec<NodeMapping>, rusqlite::Error>>()?;
@@ -122,7 +143,7 @@ impl FlightComputer {
 
 		async move {
 			let socket = UdpSocket::bind("0.0.0.0:7201").await.unwrap();
-			let mut frame_buffer = vec![0; 521];
+			let mut frame_buffer = vec![0; 20_000];
 
 			while let Some(vehicle_state) = weak_vehicle_state.upgrade() {
 				match socket.recv_from(&mut frame_buffer).await {
