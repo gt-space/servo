@@ -25,8 +25,9 @@ pub async fn get_mappings(database: Data<Database>) -> actix_web::Result<Json<se
 				channel_type,
 				channel,
 				computer,
-				scale,
-				offset,
+				max,
+				min,
+				calibrated_offset,
 				connected_threshold,
 				powered_threshold,
 				normally_closed
@@ -42,11 +43,12 @@ pub async fn get_mappings(database: Data<Database>) -> actix_web::Result<Json<se
 				channel_type: row.get(3)?,
 				channel: row.get(4)?,
 				computer: row.get(5)?,
-				scale: row.get(6)?,
-				offset: row.get(7)?,
-				connected_threshold: row.get(8)?,
-				powered_threshold: row.get(9)?,
-				normally_closed: row.get(10)?,
+				max: row.get(6)?,
+				min: row.get(7)?,
+				calibrated_offset: row.get(8)?,
+				connected_threshold: row.get(9)?,
+				powered_threshold: row.get(10)?,
+				normally_closed: row.get(11)?,
 			};
 
 			Ok((configuration_id, mapping))
@@ -100,22 +102,24 @@ pub async fn post_mappings(
 					channel_type,
 					channel,
 					computer,
-					scale,
-					offset,
+					max,
+					min,
+					calibrated_offset,
 					connected_threshold,
 					powered_threshold,
 					normally_closed,
 					active
-				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, TRUE)
-			", rusqlite::params![
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, TRUE)
+			", params![
 				request.configuration_id,
 				mapping.text_id,
 				mapping.board_id,
 				mapping.channel_type,
 				mapping.channel,
 				mapping.computer,
-				mapping.scale,
-				mapping.offset,
+				mapping.max,
+				mapping.min,
+				mapping.calibrated_offset,
 				mapping.connected_threshold,
 				mapping.powered_threshold,
 				mapping.normally_closed,
@@ -150,13 +154,14 @@ pub async fn put_mappings(
 				channel_type,
 				channel,
 				computer,
-				scale,
-				offset,
+				max,
+				min,
+				calibrated_offset,
 				connected_threshold,
 				powered_threshold,
 				normally_closed,
 				active
-			) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, TRUE)
+			) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, TRUE)
 			ON CONFLICT (configuration_id, text_id) DO UPDATE SET
 				board_id = excluded.board_id,
 				channel = excluded.channel,
@@ -168,15 +173,16 @@ pub async fn put_mappings(
 				powered_threshold = excluded.powered_threshold,
 				normally_closed = excluded.normally_closed,
 				active = excluded.active
-		", rusqlite::params![
+		", params![
 			request.configuration_id,
 			mapping.text_id,
 			mapping.board_id,
 			mapping.channel_type,
 			mapping.channel,
 			mapping.computer,
-			mapping.scale,
-			mapping.offset,
+			mapping.max,
+			mapping.min,
+			mapping.calibrated_offset,
 			mapping.connected_threshold,
 			mapping.powered_threshold,
 			mapping.normally_closed,
@@ -285,4 +291,46 @@ pub async fn get_active_configuration(database: Data<Database>) -> actix_web::Re
 		.map_err(|_| error::ErrorNotFound("no configurations active"))?;
 
 	Ok(Json(ActiveConfiguration { configuration_id }))
+}
+
+/// Route handler to calibrate all sensors in the current configuration.
+pub async fn calibrate(
+	database: Data<Database>,
+	flight_computer: Data<FlightComputer>
+) -> actix_web::Result<Json<HashMap<String, f64>>> {
+	let vehicle_state = &flight_computer.vehicle_state().0;
+	let database = database.connection().lock().await;
+
+	let to_calibrate = database
+		.prepare("
+			SELECT text_id
+			FROM NodeMappings
+			WHERE
+				channel_type IN ('current_loop', 'differential_signal')
+				AND active
+		")
+		.map_err(internal)?
+		.query_and_then([], |row| row.get(0))
+		.map_err(internal)?
+		.collect::<rusqlite::Result<Vec<String>>>()
+		.map_err(internal)?;
+
+	let vehicle_state = vehicle_state.lock().await;
+	let mut updated = HashMap::new();
+
+	for sensor in to_calibrate {
+		if let Some(measurement) = vehicle_state.sensor_readings.get(&sensor) {
+			database
+				.execute("
+					UPDATE NodeMappings
+					SET calibrated_offset = ?1
+					WHERE text_id = ?2
+				", params![sensor, measurement.value])
+				.map_err(internal)?;
+
+			updated.insert(sensor.clone(), measurement.value);
+		}
+	}
+
+	Ok(Json(updated))
 }

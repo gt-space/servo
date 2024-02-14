@@ -40,13 +40,12 @@ CREATE TABLE NodeMappings (
 		'rail_5v',
 		'rail_5v5',
 		'rail_24v',
-		'pt',
-		'load_cell',
+		'current_loop',
+		'differential_signal',
 		'tc',
 		'valve_current',
 		'valve_voltage',
-		'rtd',
-		'valve'
+		'rtd'
 	))
 );
 

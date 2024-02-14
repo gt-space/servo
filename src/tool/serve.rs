@@ -54,6 +54,7 @@ pub fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 			.route("/operator/mappings", web::delete().to(routes::mappings::delete_mappings))
 			.route("/operator/active-configuration", web::get().to(routes::mappings::get_active_configuration))
 			.route("/operator/active-configuration", web::post().to(routes::mappings::activate_configuration))
+			.route("/operator/calibrate", web::post().to(routes::mappings::calibrate))
 			.route("/operator/sequence", web::get().to(routes::sequence::retrieve_sequences))
 			.route("/operator/sequence", web::put().to(routes::sequence::save_sequence))
 			.route("/operator/sequence", web::delete().to(routes::sequence::delete_sequence))

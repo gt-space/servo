@@ -97,8 +97,9 @@ impl FlightComputer {
 					channel_type,
 					channel,
 					computer,
-					scale,
-					offset,
+					max,
+					min,
+					calibrated_offset,
 					connected_threshold,
 					powered_threshold,
 					normally_closed
@@ -111,11 +112,12 @@ impl FlightComputer {
 					channel_type: row.get(2)?,
 					channel: row.get(3)?,
 					computer: row.get(4)?,
-					scale: row.get(5)?,
-					offset: row.get(6)?,
-					connected_threshold: row.get(7)?,
-					powered_threshold: row.get(8)?,
-					normally_closed: row.get(9)?,
+					max: row.get(5)?,
+					min: row.get(6)?,
+					calibrated_offset: row.get(7)?,
+					connected_threshold: row.get(8)?,
+					powered_threshold: row.get(9)?,
+					normally_closed: row.get(10)?,
 				})
 			})?
 			.collect::<Result<Vec<NodeMapping>, rusqlite::Error>>()?;
