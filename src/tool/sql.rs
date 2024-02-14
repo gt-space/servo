@@ -7,20 +7,18 @@ pub struct SqlResponse {
 }
 
 /// Tool command function that sends a SQL request to Servo.
-pub async fn sql(sql: &str) -> anyhow::Result<()> {
+pub fn sql(sql: &str) -> anyhow::Result<()> {
 	let request = serde_json::json!({
 		"raw_sql": sql
 	});
 
-	let client = reqwest::Client::new();
+	let client = reqwest::blocking::Client::new();
 	let response: SqlResponse = serde_json::from_str(
 		&client.post(format!("http://localhost:7200/admin/sql"))
 			.json(&request)
-			.send()
-			.await?
+			.send()?
 			.error_for_status()?
-			.text()
-			.await?
+			.text()?
 	)?;
 
 	if response.rows.len() > 0 {

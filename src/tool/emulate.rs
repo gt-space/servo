@@ -1,11 +1,10 @@
-use tokio::net::UdpSocket;
-
 use common::comm::{Measurement, Unit, ValveState, VehicleState};
+use std::net::UdpSocket;
 
-pub async fn emulate() -> anyhow::Result<()> {
-	let data_socket = UdpSocket::bind("0.0.0.0:0").await?;
+pub fn emulate() -> anyhow::Result<()> {
+	let data_socket = UdpSocket::bind("0.0.0.0:0")?;
 	println!("{:?}", data_socket.local_addr());
-	data_socket.connect("localhost:7201").await?;
+	data_socket.connect("localhost:7201")?;
 
 	let mut mock_vehicle_state = VehicleState::new();
 	mock_vehicle_state.valve_states.insert("BBV".to_owned(), ValveState::Closed);
@@ -19,6 +18,6 @@ pub async fn emulate() -> anyhow::Result<()> {
 		mock_vehicle_state.sensor_readings.insert("WTPT".to_owned(), Measurement { value: rand::random::<f64>() * 1000.0, unit: Unit::Psi });
 		raw = postcard::to_allocvec(&mock_vehicle_state)?;
 
-		data_socket.send(&raw).await?;
+		data_socket.send(&raw)?;
 	}
 }

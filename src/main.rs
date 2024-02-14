@@ -3,8 +3,7 @@ use jeflog::fail;
 use servo::tool;
 use std::{env, fs, path::{Path, PathBuf}, process};
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
 	#[cfg(target_family = "windows")]
 	let home_path = &env::var("USERPROFILE")?;
 
@@ -85,20 +84,26 @@ async fn main() -> anyhow::Result<()> {
 		.get_matches();
 	
 	match matches.subcommand() {
-		Some(("clean", _)) => tool::clean(&servo_dir).await?,
-		Some(("deploy", _)) => tool::deploy().await?,
-		Some(("emulate", _)) => tool::emulate().await?,
+		Some(("clean", _)) => tool::clean(&servo_dir)?,
+		// Some(("deploy", args)) => tool::deploy(args),
+		Some(("emulate", _)) => tool::emulate()?,
 		Some(("export", args)) => {
 			tool::export(
 				args.get_one::<f64>("from").copied(),
 				args.get_one::<f64>("to").copied(),
 				args.get_one::<String>("output_path").unwrap(),
-			).await?
+			)?;
 		},
-		Some(("run", args)) => tool::run(args.get_one::<String>("path").unwrap()).await?,
-		Some(("serve", _)) => tool::serve(&servo_dir).await?,
-		Some(("sql", args)) => tool::sql(args.get_one::<String>("raw_sql").unwrap()).await?,
-		Some(("upload", args)) => tool::upload(args.get_one::<PathBuf>("sequence_path").unwrap()).await?,
+		Some(("run", args)) => tool::run(args.get_one::<String>("path").unwrap())?,
+		Some(("serve", _)) => {
+			tokio::runtime::Builder::new_multi_thread()
+				.enable_all()
+				.build()
+				.unwrap()
+				.block_on(tool::serve(&servo_dir))?;
+		},
+		Some(("sql", args)) => tool::sql(args.get_one::<String>("raw_sql").unwrap())?,
+		Some(("upload", args)) => tool::upload(args.get_one::<PathBuf>("sequence_path").unwrap())?,
 		_ => {
 			fail!("Invalid command. Please check the command you entered.");
 			process::exit(1);
