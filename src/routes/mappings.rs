@@ -332,5 +332,13 @@ pub async fn calibrate(
 		}
 	}
 
+	drop(database);
+	drop(vehicle_state);
+
+	flight_computer
+		.send_mappings()
+		.await
+		.map_err(internal)?;
+
 	Ok(Json(updated))
 }

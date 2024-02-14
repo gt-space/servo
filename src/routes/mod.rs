@@ -1,9 +1,6 @@
 /// Route functions requiring admin privilages for execution.
 pub mod admin;
 
-/// Route functions related to calibration of sensors.
-pub mod calibrate;
-
 /// Route functions related to operator commands.
 pub mod command;
 
