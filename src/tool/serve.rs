@@ -14,14 +14,14 @@ use crate::{
 /// Performs the necessary setup to connect to the servo server.
 /// This function initializes database connections, spawns background tasks,
 /// and starts the HTTP server to serve the application upon request.
-pub async fn serve(servo_dir: &Path) -> anyhow::Result<()> {
+pub fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 	let database = Database::open(&servo_dir.join("database.sqlite"))?;
 	let flight_computer = FlightComputer::new(&database);
 	let host_map = HostMap::new();
 
 	let forwarding_agent = ForwardingAgent::new(flight_computer.vehicle_state());
 
-	database.migrate().await?;
+	database.migrate()?;
 
 	tokio::spawn(flight_computer.auto_connect());
 	tokio::spawn(database.log_vehicle_state(&flight_computer));
@@ -30,7 +30,7 @@ pub async fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 
 	tokio::spawn(crate::interface::display(flight_computer.vehicle_state()));
 
-	HttpServer::new(move || {
+	let server = HttpServer::new(move || {
 		let cors = Cors::default()
 			.allow_any_header()
 			.allow_any_method()
@@ -58,9 +58,14 @@ pub async fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 			.route("/operator/sequence", web::put().to(routes::sequence::save_sequence))
 			.route("/operator/sequence", web::delete().to(routes::sequence::delete_sequence))
 			.route("/operator/run-sequence", web::post().to(routes::sequence::run_sequence))
-	}).bind(("0.0.0.0", 7200))?
-		.run()
-		.await?;
+	}).bind(("0.0.0.0", 7200))?;
+
+	tokio::runtime::Builder::new_multi_thread()
+		.worker_threads(5)
+		.enable_all()
+		.build()
+		.unwrap()
+		.block_on(server.run())?;
 
 	Ok(())
 }

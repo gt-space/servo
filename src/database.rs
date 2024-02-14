@@ -32,7 +32,7 @@ impl Database {
 	}
 
 	/// Migrates the database to the latest available migration version.
-	pub async fn migrate(&self) -> anyhow::Result<()> {
+	pub fn migrate(&self) -> anyhow::Result<()> {
 		let latest_migration = MIGRATIONS
 			.dirs()
 			.filter_map(|directory| {
@@ -49,17 +49,15 @@ impl Database {
 			.max();
 	
 		if let Some(latest_migration) = latest_migration {
-			self.migrate_to(latest_migration).await
+			self.migrate_to(latest_migration)
 		} else {
 			Ok(())
 		}
 	}
 
 	/// Migrates the database to a specific migration index.
-	pub async fn migrate_to(&self, target_migration: i32) -> anyhow::Result<()> {
-		let connection = self.connection
-			.lock()
-			.await;
+	pub fn migrate_to(&self, target_migration: i32) -> anyhow::Result<()> {
+		let connection = self.connection.blocking_lock();
 	
 		// the bootstrap query ensures that migration is set up
 		// and changes nothing if it is already set up

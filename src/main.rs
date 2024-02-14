@@ -95,13 +95,7 @@ fn main() -> anyhow::Result<()> {
 			)?;
 		},
 		Some(("run", args)) => tool::run(args.get_one::<String>("path").unwrap())?,
-		Some(("serve", _)) => {
-			tokio::runtime::Builder::new_multi_thread()
-				.enable_all()
-				.build()
-				.unwrap()
-				.block_on(tool::serve(&servo_dir))?;
-		},
+		Some(("serve", _)) => tool::serve(&servo_dir)?,
 		Some(("sql", args)) => tool::sql(args.get_one::<String>("raw_sql").unwrap())?,
 		Some(("upload", args)) => tool::upload(args.get_one::<PathBuf>("sequence_path").unwrap())?,
 		_ => {
