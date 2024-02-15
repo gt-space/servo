@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 actix-cors = "0.6"
-actix-web = "4.2"
+actix-web = "4.5"
 anyhow = "1.0"
 base64 = "0.13"
 clap = "4.4.6"
@@ -19,12 +19,12 @@ postcard = { version = "1.0", features = ["alloc"] }
 rand = "0.8"
 reqwest = { version = "0.11", features = ["blocking", "json"] }
 rusqlite = { version = "0.30", features = ["bundled"] }
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 ssh2 = "0.9"
 sysinfo = "0.29"
-tokio = { version = "1.23", features = ["macros", "rt-multi-thread", "fs"] }
-tokio-stream = { version = "0.1.14", features = ["sync"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 [[bin]]
 name = "servo"
