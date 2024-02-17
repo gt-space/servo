@@ -15,10 +15,6 @@ use std::{
 
 const SSH_PRIVATE_KEY: &'static str = include_str!("../../keys/id_ed25519");
 const RUST_VERSION: &'static str = "1.76.0";
-const DEFAULT_LOGINS: [(&'static str, &'static str); 2] = [
-	("debian", "temppwd"),
-	("yjsp", "yjspfullscale"),
-];
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 enum Platform {
@@ -33,6 +29,14 @@ impl Platform {
 			Self::AppleSilicon => "aarch64-apple-darwin",
 			Self::Beaglebone => "armv7-unknown-linux-gnueabihf",
 			Self::Meerkat => "x86_64-unknown-linux-gnu",
+		}
+	}
+
+	pub fn default_login(self) -> (&'static str, &'static str) {
+		match self {
+			Self::AppleSilicon => ("none", "none"),
+			Self::Beaglebone => ("debian", "temppwd"),
+			Self::Meerkat => ("yjsp", "yjspfullscale"),
 		}
 	}
 }
@@ -242,25 +246,29 @@ impl Target {
 		pass!("Converted raw TCP connection into SSH session.");
 		task!("Authenticating with username and password.");
 
-		let mut authenticated = false;
+		let (user, password) = self.platform.default_login();
+		let auth = session.userauth_password(user, password);
 
-		for (user, password) in DEFAULT_LOGINS {
-			session.userauth_password(user, password);
-
-			if session.authenticated() {
-				pass!("Authenticated with login \x1b[1muser\x1b[0m : \x1b[1mpassword\x1b[0m.");
-				authenticated = true;
-				break;
-			}
-		}
-
-		if !authenticated {
-			fail!("Failed to authenticate with any default login combinations.");
+		if auth.is_ok() && session.authenticated() {
+			pass!("Authenticated with login \x1b[1muser\x1b[0m : \x1b[1mpassword\x1b[0m.")
+		} else {
+			fail!("Failed to authenticate with the default login credentials.");
 			return false;
 		}
 
 		self.session = Some(session);
 		true
+	}
+
+	pub fn deploy(&self, cache: &Path) {
+		task!("Deploying \x1b[1m{}\x1b[0m to target \x1b[1m{}\x1b[0m.", self.repository, self.hostname);
+
+		// self.install_rust();
+		self.transfer(&cache);
+		self.check_rust();
+		self.install();
+
+		pass!("Deployed \x1b[1m{}\x1b[0m to target \x1b[1m{}\x1b[0m.", self.repository, self.hostname);
 	}
 
 	/// Ensures that Rust is installed on the target machine.
@@ -275,28 +283,48 @@ impl Target {
 		let mut cargo_version = String::new();
 
 		let mut channel = session.channel_session().unwrap();
-		channel.exec("carg --version").unwrap();
+		channel.exec("cargo --version").unwrap();
 		channel.read_to_string(&mut cargo_version).unwrap();
 		channel.wait_close().unwrap();
 
 		if let Some(version) = cargo_version.split(' ').nth(1) {
 			pass!("Found Rust installation on target \x1b[1m{}\x1b[0m with Cargo v{version}.", self.hostname);
-			return true;
+		} else {
+			warn!("Did not locate an existing Rust installation.");
+			self.install_rust();
 		}
+
+		true
+	}
+
+	pub fn install_rust(&self) -> bool {
+		task!("Installing Rust version \x1b[1m{}\x1b[0m.", RUST_VERSION);
+
+		let Some(session) = &self.session else {
+			fail!("Target \x1b[1m{}\x1b[0m was not connected before attempting to install Rust.", self.hostname);
+			return false;
+		};
 
 		let download_url = format!("https://static.rust-lang.org/dist/rust-{RUST_VERSION}-{}.tar.gz", self.platform.triple());
 
-		// Rust needs to be installed
-		let response = reqwest::blocking::get(download_url)
+		task!("Downloading offline installer from \x1b[1m{download_url}\x1b[0m.");
+
+		let response = reqwest::blocking::Client::new()
+			.get(&download_url)
+			.timeout(Duration::from_secs(5 * 60))
+			.send()
 			.and_then(|response| response.bytes());
 
 		let tarball = match response {
 			Ok(bytes) => bytes,
 			Err(error) => {
-				fail!("Failed to fetch offline installer for Rust v{RUST_VERSION}: {error}");
+				fail!("Failed to fetch offline installer: {error}");
 				return false;
 			},
 		};
+
+		pass!("Downloaded offline installer from \x1b[1m{download_url}\x1b[0m.");
+		task!("Transferring installer tarball to target.");
 
 		let mut remote_tarball = session.scp_send(Path::new("/tmp/rust.tar.gz"), 0o644, tarball.len() as u64, None).unwrap();
 		remote_tarball.write_all(&tarball).unwrap();
@@ -305,18 +333,24 @@ impl Target {
 		remote_tarball.close().unwrap();
 		remote_tarball.wait_close().unwrap();
 
+		pass!("Transferred installer tarball to target.");
+		task!("Uncompressing installer tarball on target.");
+
 		let mut ret = Vec::new();
 
-		channel = session.channel_session().unwrap();
+		let mut channel = session.channel_session().unwrap();
 		channel.exec("tar xzf /tmp/rust.tar.gz -C /tmp").unwrap();
 		channel.read_to_end(&mut ret).unwrap();
 		channel.wait_close().unwrap();
+
+		pass!("Uncompressed installer tarball on target.");
+		pass!("Installed Rust version \x1b[1m{RUST_VERSION}\x1b[0m.");
 
 		true
 	}
 
 	pub fn transfer(&self, cache: &Path) -> bool {
-		pass!("Transferring \x1b[1m{}\x1b[0m to remote target \x1b[1m{}\x1b[0m.", self.repository, self.hostname);
+		task!("Transferring \x1b[1m{}\x1b[0m to remote target \x1b[1m{}\x1b[0m.", self.repository, self.hostname);
 
 		let Some(session) = &self.session else {
 			fail!("Target \x1b[1m{}\x1b[0m was not connected before attempting a transfer.", self.hostname);
@@ -354,6 +388,25 @@ impl Target {
 		pass!("Uncompressed \x1b[1m{repo}\x1b[0m tarball on remote target.");
 		pass!("Transferred \x1b[1m{repo}\x1b[0m to remote target \x1b[1m{}\x1b[0m.", self.hostname);
 
+		true
+	}
+
+	pub fn install(&self) -> bool {
+		task!("Installing \x1b[1m{}\x1b[0m on remote target.", self.repository,);
+
+		let Some(session) = &self.session else {
+			fail!("Target \x1b[1m{}\x1b[0m was not connected before attempting an install.", self.hostname);
+			return false;
+		};
+
+		let mut shell_output = Vec::new();
+
+		let mut channel = session.channel_session().unwrap();
+		channel.exec(&format!("cargo install --path /tmp/{} --offline", self.repository)).unwrap();
+		channel.read_to_end(&mut shell_output).unwrap();
+		channel.wait_close().unwrap();
+		
+		pass!("Installed \x1b[1m{}\x1b[0m on remote target.", self.repository);
 		true
 	}
 }
@@ -402,27 +455,28 @@ pub fn deploy(args: &ArgMatches) {
 		}
 	}
 
-	for repo in repositories {
-		task!("Fetching and caching latest version of \x1b[1m{repo}\x1b[0m.");
+	// for repo in repositories {
+	// 	task!("Fetching and caching latest version of \x1b[1m{repo}\x1b[0m.");
 		
-		if repo.fetch_latest(&cache) { // succeeded
-			pass!("Fetched and cached latest version of \x1b[1m{repo}\x1b[0m.");
-		} else { // failed
-			fail!("Failed to fetch latest version of \x1b[1m{repo}\x1b[0m.");
-			continue;
-		}
+	// 	if repo.fetch_latest(&cache) { // succeeded
+	// 		pass!("Fetched and cached latest version of \x1b[1m{repo}\x1b[0m.");
+	// 	} else { // failed
+	// 		fail!("Failed to fetch latest version of \x1b[1m{repo}\x1b[0m.");
+	// 		continue;
+	// 	}
 
-		task!("Bundling and compressing \x1b[1m{repo}\x1b[0m into a tarball.");
+	// 	task!("Bundling and compressing \x1b[1m{repo}\x1b[0m into a tarball.");
 
-		if repo.bundle(&cache) {
-			pass!("Bundled and compressed \x1b[1m{repo}\x1b[0m into a tarball.");
-		} else {
-			fail!("Failed to bundle and compress \x1b[1m{repo}\x1b[0m into a tarball.");
-			continue;
-		}
+	// 	if repo.bundle(&cache) {
+	// 		pass!("Bundled and compressed \x1b[1m{repo}\x1b[0m into a tarball.");
+	// 	} else {
+	// 		fail!("Failed to bundle and compress \x1b[1m{repo}\x1b[0m into a tarball.");
+	// 		continue;
+	// 	}
+	// }
+
+	for mut target in targets {
+		target.connect();
+		target.deploy(&cache);
 	}
-
-	targets[0].connect();
-	targets[0].transfer(&cache);
-	targets[0].check_rust();
 }

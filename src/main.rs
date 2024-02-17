@@ -26,6 +26,30 @@ fn main() -> anyhow::Result<()> {
 		.subcommand(
 			Command::new("deploy")
 				.about("Deploys YJSP software to all available computers on the network.")
+				.arg(
+					Arg::new("prepare")
+						.long("prepare")
+						.required(false)
+						.num_args(0)
+				)
+				.arg(
+					Arg::new("offline")
+						.long("offline")
+						.required(false)
+						.num_args(0)
+				)
+				.arg(
+					Arg::new("to")
+						.long("to")
+						.short('t')
+						.required(false)
+				)
+				.arg(
+					Arg::new("path")
+						.long("path")
+						.short('p')
+						.required(false)
+				)
 		)
 		.subcommand(
 			Command::new("emulate")
@@ -85,7 +109,7 @@ fn main() -> anyhow::Result<()> {
 	
 	match matches.subcommand() {
 		Some(("clean", _)) => tool::clean(&servo_dir)?,
-		// Some(("deploy", args)) => tool::deploy(args),
+		Some(("deploy", args)) => tool::deploy(args),
 		Some(("emulate", _)) => tool::emulate()?,
 		Some(("export", args)) => {
 			tool::export(
