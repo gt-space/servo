@@ -5,13 +5,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-actix-cors = "0.6"
-actix-web = "4.5"
 anyhow = "1.0"
+axum = { version = "0.7", features = ["ws"] }
 base64 = "0.13"
-clap = "4.4.6"
+clap = "4.4"
 common = { git = "ssh://git@github-research.gatech.edu/YJSP/common", features = ["rusqlite"] }
-dns-lookup = "2.0"
 include_dir = "0.7"
 jeflog = "0.1"
 openssl = { version = "0.10", features = ["vendored"] }
@@ -21,10 +19,11 @@ reqwest = { version = "0.11", features = ["blocking", "json"] }
 rusqlite = { version = "0.30", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
+sqlx = "0.7.3"
 ssh2 = "0.9"
 sysinfo = "0.29"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs"] }
-tokio-stream = { version = "0.1", features = ["sync"] }
+tower-http = { version = "0.5", features = ["cors"] }
 
 [[bin]]
 name = "servo"

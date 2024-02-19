@@ -1,73 +1,57 @@
-use actix_cors::Cors;
-use actix_web::{web::{self, Data}, App, HttpServer};
-use std::path::Path;
-
-use crate::{
-	extractors::HostMap,
-	flight::FlightComputer,
-	forwarding::ForwardingAgent,
-	middleware::LoggingFactory,
-	routes,
-	Database,
-};
+use axum::{http::Method, routing::{delete, get, post, put}, Router};
+use tower_http::cors::{self, CorsLayer};
+use crate::{interface, server::{routes, Database, FlightComputer, SharedState}};
+use std::{io, net::SocketAddr, path::Path};
+use tokio::net::TcpListener;
 
 /// Performs the necessary setup to connect to the servo server.
 /// This function initializes database connections, spawns background tasks,
 /// and starts the HTTP server to serve the application upon request.
 pub fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 	let database = Database::open(&servo_dir.join("database.sqlite"))?;
-	let flight_computer = FlightComputer::new(&database);
-	let host_map = HostMap::new();
-
-	let forwarding_agent = ForwardingAgent::new(flight_computer.vehicle_state());
-
 	database.migrate()?;
 
 	tokio::runtime::Builder::new_multi_thread()
-		.worker_threads(5)
+		.worker_threads(10)
 		.enable_all()
 		.build()
 		.unwrap()
 		.block_on(async move {
-			tokio::spawn(flight_computer.auto_connect());
-			tokio::spawn(database.log_vehicle_state(&flight_computer));
-			tokio::spawn(flight_computer.receive_vehicle_state());
-			tokio::spawn(forwarding_agent.forward());
+			let shared_state = SharedState::new(database);
 
-			tokio::spawn(crate::interface::display(flight_computer.vehicle_state()));
+			tokio::spawn(FlightComputer::auto_connect(&shared_state));
+			tokio::spawn(shared_state.database.log_vehicle_state(&shared_state));
+			tokio::spawn(interface::display(shared_state.clone()));
+
+			let cors = CorsLayer::new()
+				.allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+				.allow_headers(cors::Any)
+				.allow_origin(cors::Any);
+
+			let server = Router::new()
+				.layer(cors)
+				.route("/data/forward", get(routes::forward_data))
+				.route("/data/export", post(routes::export))
+				.route("/admin/sql", post(routes::execute_sql))
+				.route("/operator/command", post(routes::dispatch_operator_command))
+				.route("/operator/mappings", get(routes::get_mappings))
+				.route("/operator/mappings", post(routes::post_mappings))
+				.route("/operator/mappings", put(routes::put_mappings))
+				.route("/operator/mappings", delete(routes::delete_mappings))
+				.route("/operator/active-configuration", get(routes::get_active_configuration))
+				.route("/operator/active-configuration", post(routes::activate_configuration))
+				.route("/operator/calibrate", post(routes::calibrate))
+				.route("/operator/sequence", get(routes::retrieve_sequences))
+				.route("/operator/sequence", put(routes::save_sequence))
+				.route("/operator/sequence", delete(routes::delete_sequence))
+				.route("/operator/run-sequence", post(routes::run_sequence))
+				.with_state(shared_state)
+				.into_make_service_with_connect_info::<SocketAddr>();
 			
-			let server = HttpServer::new(move || {
-				let cors = Cors::default()
-					.allow_any_header()
-					.allow_any_method()
-					.allow_any_origin()
-					.supports_credentials();
-		
-				App::new()
-					.wrap(cors)
-					.wrap(LoggingFactory::new(&database))
-					.app_data(Data::new(database.clone()))
-					.app_data(Data::new(flight_computer.clone()))
-					.app_data(Data::new(host_map.clone()))
-					.app_data(Data::new(forwarding_agent.clone()))
-					.route("/data/forward", web::get().to(routes::data::forward))
-					.route("/data/export", web::post().to(routes::data::export))
-					.route("/admin/sql", web::post().to(routes::admin::execute_sql))
-					.route("/operator/command", web::post().to(routes::command::dispatch_operator_command))
-					.route("/operator/mappings", web::get().to(routes::mappings::get_mappings))
-					.route("/operator/mappings", web::post().to(routes::mappings::post_mappings))
-					.route("/operator/mappings", web::put().to(routes::mappings::put_mappings))
-					.route("/operator/mappings", web::delete().to(routes::mappings::delete_mappings))
-					.route("/operator/active-configuration", web::get().to(routes::mappings::get_active_configuration))
-					.route("/operator/active-configuration", web::post().to(routes::mappings::activate_configuration))
-					.route("/operator/calibrate", web::post().to(routes::mappings::calibrate))
-					.route("/operator/sequence", web::get().to(routes::sequence::retrieve_sequences))
-					.route("/operator/sequence", web::put().to(routes::sequence::save_sequence))
-					.route("/operator/sequence", web::delete().to(routes::sequence::delete_sequence))
-					.route("/operator/run-sequence", web::post().to(routes::sequence::run_sequence))
-			}).bind(("0.0.0.0", 7200))?;
+			let listener = TcpListener::bind("0.0.0.0:7200").await?;
+			axum::serve(listener, server).await?;
 
-			server.run().await
+			io::Result::Ok(())
 		})?;
 
 	Ok(())

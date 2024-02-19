@@ -1,93 +1,61 @@
 use common::comm::{FlightControlMessage, NodeMapping, VehicleState, Sequence};
-use crate::Database;
 use jeflog::warn;
-use tokio::{sync::{Mutex, Notify}, io::{self, AsyncWriteExt}, net::{TcpStream, UdpSocket}};
-
-use std::{
-	future::Future,
-	net::{Ipv4Addr, SocketAddr, SocketAddrV4},
-	sync::Arc,
-	time::Duration,
-};
+use super::{Database, SharedState};
+use std::{future::Future, sync::Arc};
+use tokio::{io::{self, AsyncWriteExt}, net::{TcpListener, TcpStream, UdpSocket}, sync::{Mutex, Notify, RwLock}};
 
 /// Struct capable of performing thread-safe operations on a flight computer
 /// connection, thus capable of being passed to route handlers.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct FlightComputer {
-	connection: Arc<Mutex<Option<TcpStream>>>,
-	vehicle_state: Arc<(Mutex<VehicleState>, Notify)>,
 	database: Database,
+	stream: TcpStream,
+	vehicle_state: Arc<(RwLock<VehicleState>, Notify)>,
+	shared_self: Arc<(Mutex<Option<Self>>, Notify)>,
 }
 
 impl FlightComputer {
-	/// Constructs a thread-safe wrapper around a TCP stream which can be
-	/// connected to the flight computer.
-	pub fn new(database: &Database) -> Self {
-		FlightComputer {
-			connection: Arc::new(Mutex::new(None)),
-			vehicle_state: Arc::new((Mutex::new(VehicleState::new()), Notify::new())),
-			database: database.clone()
-		}
-	}
-
-	/// A getter that creates a new weak reference to the rocket state.
-	pub fn vehicle_state(&self) -> Arc<(Mutex<VehicleState>, Notify)> {
-		self.vehicle_state.clone()
-	}
-
-	/// A getter which determines whether the flight computer is connected.
-	pub async fn is_connected(&self) -> bool {
-		return self.connection
-			.lock()
-			.await
-			.is_some();
-	}
-
 	/// A listener function which auto-connects to the flight computer.
 	/// 
 	/// The flight computer is expected to fetch the IP address of the
 	/// ground computer by hostname resolution, outside the scope of servo.
-	pub fn auto_connect(&self) -> impl Future<Output = io::Result<()>> {
-		let connection = self.connection.clone();
+	pub fn auto_connect(shared: &SharedState) -> impl Future<Output = io::Result<()>> {
+		let database = shared.database.clone();
+		let flight = shared.flight.clone();
+		let vehicle_state = shared.vehicle.clone();
 
-		async {
-			let flight_listener = std::net::TcpListener::bind(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 5025)))?;
-			flight_listener.set_nonblocking(true)?;
+		async move {
+			loop {
+				let listener = TcpListener::bind("0.0.0.0:5025").await?;
+				let (mut stream, _) = listener.accept().await?;
+				let mut computer = flight.0.lock().await;
 
-			let flight_stream = loop {
-				if let Ok((stream, _)) = flight_listener.accept() {
-					break stream;
+				if computer.is_none() {
+					let flight = FlightComputer {
+						stream,
+						database: database.clone(),
+						vehicle_state: vehicle_state.clone(),
+						shared_self: flight.clone(),
+					};
+
+					tokio::spawn(flight.receive_vehicle_state());
+					*computer = Some(flight);
+				} else {
+					stream.shutdown().await?;
 				}
-
-				tokio::time::sleep(Duration::from_millis(500)).await;
-			};
-
-			*connection.lock_owned().await = Some(TcpStream::from_std(flight_stream)?);
-			println!("connected to the flight computer");
-
-			// TODO:
-			// self.send_mappings().await;
-			Ok(())
+			}
 		}
 	}
 
 	/// Send a slice of bytes along the TCP connection to the flight computer.
-	pub async fn send_bytes(&self, bytes: &[u8]) -> io::Result<()> {
-		self.connection
-			.lock()
-			.await
-			.as_mut()
-			.ok_or(io::Error::new(io::ErrorKind::NotConnected, "flight computer not connected"))?
-			.write_all(bytes)
-			.await?;
-
-		Ok(())
+	pub async fn send_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
+		self.stream.write_all(bytes).await
 	}
 
 	/// Sends the given set of mappings to the flight computer.
-	pub async fn send_mappings(&self) -> anyhow::Result<()> {
+	pub async fn send_mappings(&mut self) -> anyhow::Result<()> {
 		let mappings = self.database
-			.connection()
+			.connection
 			.lock()
 			.await
 			.prepare("
@@ -131,7 +99,7 @@ impl FlightComputer {
 	}
 
 	/// Sends the given sequence to the flight computer to be executed.
-	pub async fn send_sequence(&self, sequence: Sequence) -> anyhow::Result<()> {
+	pub async fn send_sequence(&mut self, sequence: Sequence) -> anyhow::Result<()> {
 		let message = FlightControlMessage::Sequence(sequence);
 		let serialized = postcard::to_allocvec(&message)?;
 
@@ -142,6 +110,7 @@ impl FlightComputer {
 	/// Repeatedly receives vehicle state information from the flight computer.
 	pub fn receive_vehicle_state(&self) -> impl Future<Output = io::Result<()>> {
 		let weak_vehicle_state = Arc::downgrade(&self.vehicle_state);
+		let shared_self = self.shared_self.clone();
 
 		async move {
 			let socket = UdpSocket::bind("0.0.0.0:7201").await.unwrap();
@@ -150,7 +119,10 @@ impl FlightComputer {
 			while let Some(vehicle_state) = weak_vehicle_state.upgrade() {
 				match socket.recv_from(&mut frame_buffer).await {
 					Ok((datagram_size, _)) => {
-						if datagram_size == frame_buffer.len() {
+						if datagram_size == 0 {
+							// if the datagram size is zero, the connection has been closed
+							break;
+						} else if datagram_size == frame_buffer.len() {
 							frame_buffer.resize(frame_buffer.len() * 2, 0);
 							continue;
 						}
@@ -159,7 +131,7 @@ impl FlightComputer {
 
 						match new_state {
 							Ok(state) => {
-								*vehicle_state.0.lock().await = state;
+								*vehicle_state.0.write().await = state;
 								vehicle_state.1.notify_waiters();
 							},
 							Err(error) => warn!("Failed to deserialize vehicle state: {error}"),
@@ -170,10 +142,16 @@ impl FlightComputer {
 						// Unix systems just log whatever they can.
 						if error.raw_os_error() == Some(10040) {
 							frame_buffer.resize(frame_buffer.len() * 2, 0);
+							continue;
 						}
+
+						break;
 					}
 				}
 			}
+
+			*shared_self.0.lock().await = None;
+			shared_self.1.notify_waiters();
 
 			Ok(())
 		}
