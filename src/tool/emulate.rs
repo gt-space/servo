@@ -1,7 +1,9 @@
 use common::comm::{Measurement, Unit, ValveState, VehicleState};
-use std::net::UdpSocket;
+use std::net::{TcpStream, UdpSocket};
 
 pub fn emulate() -> anyhow::Result<()> {
+	let _flight = TcpStream::connect("localhost:5025")?;
+
 	let data_socket = UdpSocket::bind("0.0.0.0:0")?;
 	println!("{:?}", data_socket.local_addr());
 	data_socket.connect("localhost:7201")?;

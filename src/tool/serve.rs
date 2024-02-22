@@ -24,7 +24,7 @@ pub fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 			tokio::spawn(interface::display(shared_state.clone()));
 
 			let cors = CorsLayer::new()
-				.allow_methods([Method::GET, Method::DELETE, Method::OPTIONS, Method::POST, Method::PUT])
+				.allow_methods(cors::Any)
 				.allow_headers(cors::Any)
 				.allow_origin(cors::Any);
 
