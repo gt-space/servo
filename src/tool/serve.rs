@@ -29,7 +29,6 @@ pub fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 				.allow_origin(cors::Any);
 
 			let server = Router::new()
-				.layer(cors)
 				.route("/data/forward", get(routes::forward_data))
 				.route("/data/export", post(routes::export))
 				.route("/admin/sql", post(routes::execute_sql))
@@ -45,6 +44,7 @@ pub fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 				.route("/operator/sequence", put(routes::save_sequence))
 				.route("/operator/sequence", delete(routes::delete_sequence))
 				.route("/operator/run-sequence", post(routes::run_sequence))
+				.layer(cors)
 				.with_state(shared_state)
 				.into_make_service_with_connect_info::<SocketAddr>();
 			
