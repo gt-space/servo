@@ -1,5 +1,6 @@
 use axum::{extract::{ws, ConnectInfo, State, WebSocketUpgrade}, http::header, response::{IntoResponse, Response}, Json};
 use common::comm::VehicleState;
+use futures_util::{SinkExt, StreamExt};
 use crate::server::{self, error::{bad_request, internal}, SharedState};
 use jeflog::warn;
 use serde::{Deserialize, Serialize};
@@ -121,10 +122,13 @@ pub async fn forward_data(
 	State(shared): State<SharedState>,
 	ConnectInfo(peer): ConnectInfo<SocketAddr>,
 ) -> Response {
-	ws.on_upgrade(move |mut socket| {
+	ws.on_upgrade(move |socket| async move {
 		let vehicle = shared.vehicle.clone();
+		let (mut writer, mut reader) = socket.split();
 
-		async move {
+		// spawn separate task for forwarding while the "main" task waits
+		// until it can abort this task when the user wants to close
+		let forwarding_handle = tokio::spawn(async move {
 			let (vehicle_state, _) = vehicle.as_ref();
 
 			// setup forwarding agent to send vehicle state every 100ms (10Hz)
@@ -150,15 +154,22 @@ pub async fn forward_data(
 				drop(vehicle_state);
 
 				// attempt to forward vehicle state and break if connection is severed.
-				if let Err(_error) = socket.send(ws::Message::Text(json)).await {
+				if let Err(_error) = writer.send(ws::Message::Text(json)).await {
 					warn!("Forwarding connection with peer \x1b[1m{}\x1b[0m severed.", peer);
-					_ = socket.close().await;
+					_ = writer.close().await;
 					break;
 				}
 
 				// wait for 100ms to retransmit vehicle state
 				interval.tick().await;
 			}
-		}
+		});
+
+		// wait until reader from socket receives a ws::Message::Close or a None,
+		// indicating that the stream is no longer readable
+		while !matches!(reader.next().await, Some(Ok(ws::Message::Close(_))) | None) {}
+
+		// cancel the forwarding stream upon receipt of a close message
+		forwarding_handle.abort();
 	})
 }

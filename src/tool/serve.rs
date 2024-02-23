@@ -1,4 +1,4 @@
-use axum::{http::Method, routing::{delete, get, post, put}, Router};
+use axum::{routing::{delete, get, post, put}, Router};
 use tower_http::cors::{self, CorsLayer};
 use crate::{interface, server::{routes, Database, FlightComputer, SharedState}};
 use std::{io, net::SocketAddr, path::Path};

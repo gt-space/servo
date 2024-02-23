@@ -10,6 +10,7 @@ axum = { version = "0.7", features = ["ws"] }
 base64 = "0.13"
 clap = "4.4"
 common = { git = "ssh://git@github-research.gatech.edu/YJSP/common", features = ["rusqlite"] }
+futures-util = "0.3.30"
 include_dir = "0.7"
 jeflog = "0.1"
 openssl = { version = "0.10", features = ["vendored"] }
