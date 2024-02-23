@@ -10,7 +10,7 @@ use tokio::{io::{self, AsyncWriteExt}, net::{TcpListener, TcpStream, UdpSocket},
 pub struct FlightComputer {
 	database: Database,
 	stream: TcpStream,
-	vehicle_state: Arc<(RwLock<VehicleState>, Notify)>,
+	vehicle_state: Arc<(Mutex<VehicleState>, Notify)>,
 	shared_self: Arc<(Mutex<Option<Self>>, Notify)>,
 }
 
@@ -109,14 +109,14 @@ impl FlightComputer {
 
 	/// Repeatedly receives vehicle state information from the flight computer.
 	pub fn receive_vehicle_state(&self) -> impl Future<Output = io::Result<()>> {
-		let weak_vehicle_state = Arc::downgrade(&self.vehicle_state);
+		let vehicle_state = self.vehicle_state.clone();
 		let shared_self = self.shared_self.clone();
 
 		async move {
 			let socket = UdpSocket::bind("0.0.0.0:7201").await.unwrap();
 			let mut frame_buffer = vec![0; 20_000];
 
-			while let Some(vehicle_state) = weak_vehicle_state.upgrade() {
+			loop {
 				match socket.recv_from(&mut frame_buffer).await {
 					Ok((datagram_size, _)) => {
 						if datagram_size == 0 {
@@ -124,6 +124,7 @@ impl FlightComputer {
 							break;
 						} else if datagram_size == frame_buffer.len() {
 							frame_buffer.resize(frame_buffer.len() * 2, 0);
+							println!("resized buffer");
 							continue;
 						}
 
@@ -131,7 +132,7 @@ impl FlightComputer {
 
 						match new_state {
 							Ok(state) => {
-								*vehicle_state.0.write().await = state;
+								*vehicle_state.0.lock().await = state;
 								vehicle_state.1.notify_waiters();
 							},
 							Err(error) => warn!("Failed to deserialize vehicle state: {error}"),

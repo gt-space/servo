@@ -105,9 +105,9 @@ impl Database {
 
 			loop {
 				vehicle_state.1.notified().await;
-				let vehicle_state = vehicle_state.0.read().await;
+				let vehicle_state = vehicle_state.0.lock().await.clone();
 
-				match postcard::to_slice(&*vehicle_state, &mut buffer) {
+				match postcard::to_slice(&vehicle_state, &mut buffer) {
 					Ok(serialized) => {
 						let query_result = connection
 						.lock()

@@ -132,12 +132,13 @@ pub async fn forward_data(
 
 			loop {
 				let vehicle_state = vehicle_state
-					.read()
-					.await;
+					.lock()
+					.await
+					.clone();
 
 				// serialize vehicle state into JSON so it is easily digestible by the GUI.
 				// vehicle state comes in as postcard and gets reserialized here. overhead isn't bad.
-				let json = match serde_json::to_string(&*vehicle_state) {
+				let json = match serde_json::to_string(&vehicle_state) {
 					Ok(json) => json,
 					Err(error) => {
 						warn!("Failed to serialize vehicle state into JSON: {error}");

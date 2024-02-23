@@ -338,7 +338,7 @@ pub async fn calibrate(State(shared): State<SharedState>) -> server::Result<Json
 		.collect::<rusqlite::Result<Vec<String>>>()
 		.map_err(internal)?;
 
-	let vehicle_state = shared.vehicle.0.read().await;
+	let vehicle_state = shared.vehicle.0.lock().await.clone();
 	let mut updated = HashMap::new();
 
 	for sensor in to_calibrate {

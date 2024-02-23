@@ -108,8 +108,9 @@ pub async fn display(shared: SharedState) {
 
 		// display sensor data
 		let vehicle_state = shared.vehicle.0
-			.read()
-			.await;
+			.lock()
+			.await
+			.clone();
 
 		sensors_container.height = vehicle_state.sensor_readings.len() + 2;
 		Terminal::draw(&sensors_container);

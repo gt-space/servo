@@ -27,13 +27,13 @@ pub struct SharedState {
 	pub ground: Arc<(Mutex<Option<FlightComputer>>, Notify)>,
 
 	/// The state of the vehicle, including both flight and ground components.
-	pub vehicle: Arc<(RwLock<VehicleState>, Notify)>,
+	pub vehicle: Arc<(Mutex<VehicleState>, Notify)>,
 }
 
 impl SharedState {
 	/// Creates a new shared state given a database.
 	pub fn new(database: Database) -> Self {
-		let vehicle_state = Arc::new((RwLock::new(VehicleState::new()), Notify::new()));
+		let vehicle_state = Arc::new((Mutex::new(VehicleState::new()), Notify::new()));
 
 		SharedState {
 			database,
