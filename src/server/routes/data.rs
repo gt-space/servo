@@ -104,11 +104,6 @@ pub async fn export(
 				content += "\n";
 			}
 
-			database.execute(
-				"INSERT INTO VehicleSnapshots (from_time, to_time, format, contents) VALUES (?1, ?2, ?3, ?4)",
-				rusqlite::params![request.from, request.to, request.format, content]
-			).map_err(internal)?;
-
 			let headers = [(header::CONTENT_TYPE, "text/csv; charset=utf-8")];
 			Ok((headers, content))
 		},
