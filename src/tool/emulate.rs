@@ -1,11 +1,20 @@
+use clap::ArgMatches;
 use common::comm::{Measurement, Unit, ValveState, VehicleState};
-use std::net::{TcpStream, UdpSocket};
+use std::{net::{TcpStream, UdpSocket}, thread, time::Duration};
 
-pub fn emulate() -> anyhow::Result<()> {
+pub fn emulate_flight() -> anyhow::Result<()> {
+	Ok(())
+}
+
+pub fn emulate_sam() -> anyhow::Result<()> {
+	Ok(())
+}
+
+/// Tool function which emulates different components of the software stack.
+pub fn emulate(args: &ArgMatches) -> anyhow::Result<()> {
 	let _flight = TcpStream::connect("localhost:5025")?;
 
 	let data_socket = UdpSocket::bind("0.0.0.0:0")?;
-	println!("{:?}", data_socket.local_addr());
 	data_socket.connect("localhost:7201")?;
 
 	let mut mock_vehicle_state = VehicleState::new();
@@ -21,5 +30,6 @@ pub fn emulate() -> anyhow::Result<()> {
 		raw = postcard::to_allocvec(&mock_vehicle_state)?;
 
 		data_socket.send(&raw)?;
+		thread::sleep(Duration::from_millis(1));
 	}
 }

@@ -1,4 +1,4 @@
-use clap::{Command, Arg};
+use clap::{builder::{PossibleValuesParser, ValueParser}, Arg, Command};
 use jeflog::fail;
 use servo::tool;
 use std::{env, fs, path::{Path, PathBuf}, process};
@@ -54,6 +54,25 @@ fn main() -> anyhow::Result<()> {
 		.subcommand(
 			Command::new("emulate")
 				.about("Emulates a particular subsystem of the YJSP software stack.")
+				.arg(
+					Arg::new("component")
+						.required(true)
+						.ignore_case(true)
+						.value_parser(PossibleValuesParser::new(["flight", "sam"]))
+				)
+				.arg(
+					Arg::new("frequency")
+						.required(false)
+						.default_value("100.0")
+						.short('f')
+						.value_parser(clap::value_parser!(f64))
+				)
+				.arg(
+					Arg::new("duration")
+						.required(false)
+						.short('t')
+						.value_parser(clap::value_parser!(f64))
+				)
 		)
 		.subcommand(
 			Command::new("export")
@@ -74,6 +93,15 @@ fn main() -> anyhow::Result<()> {
 						.required(false)
 						.long("to")
 						.value_parser(clap::value_parser!(f64))
+				)
+		)
+		.subcommand(
+			Command::new("locate")
+				.about("Locates the IP addresses of known hostnames on the network.")
+				.arg(
+					Arg::new("subsystem")
+						.required(false)
+						.value_parser(PossibleValuesParser::new(["gui", "servo", "flight", "sam"]))
 				)
 		)
 		.subcommand(
@@ -110,7 +138,7 @@ fn main() -> anyhow::Result<()> {
 	match matches.subcommand() {
 		Some(("clean", _)) => tool::clean(&servo_dir)?,
 		Some(("deploy", args)) => tool::deploy(args),
-		Some(("emulate", _)) => tool::emulate()?,
+		Some(("emulate", args)) => tool::emulate(args)?,
 		Some(("export", args)) => {
 			tool::export(
 				args.get_one::<f64>("from").copied(),
@@ -118,6 +146,7 @@ fn main() -> anyhow::Result<()> {
 				args.get_one::<String>("output_path").unwrap(),
 			)?;
 		},
+		Some(("locate", args)) => tool::locate(args)?,
 		Some(("run", args)) => tool::run(args.get_one::<String>("path").unwrap())?,
 		Some(("serve", _)) => tool::serve(&servo_dir)?,
 		Some(("sql", args)) => tool::sql(args.get_one::<String>("raw_sql").unwrap())?,
