@@ -11,7 +11,7 @@ pub use error::{ServerError as Error, ServerResult as Result};
 pub use flight::FlightComputer;
 
 use std::sync::Arc;
-use tokio::sync::{Mutex, Notify, RwLock};
+use tokio::sync::{Mutex, Notify};
 
 /// Contains all of Servo's shared server state.
 #[derive(Clone, Debug)]

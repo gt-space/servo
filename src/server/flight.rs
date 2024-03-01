@@ -2,7 +2,7 @@ use common::comm::{FlightControlMessage, NodeMapping, VehicleState, Sequence};
 use jeflog::warn;
 use super::{Database, SharedState};
 use std::{future::Future, sync::Arc};
-use tokio::{io::{self, AsyncWriteExt}, net::{TcpListener, TcpStream, UdpSocket}, sync::{Mutex, Notify, RwLock}};
+use tokio::{io::{self, AsyncWriteExt}, net::{TcpListener, TcpStream, UdpSocket}, sync::{Mutex, Notify}};
 
 /// Struct capable of performing thread-safe operations on a flight computer
 /// connection, thus capable of being passed to route handlers.

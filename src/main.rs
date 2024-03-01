@@ -1,4 +1,4 @@
-use clap::{builder::{PossibleValuesParser, ValueParser}, Arg, Command};
+use clap::{builder::PossibleValuesParser, Arg, Command};
 use jeflog::fail;
 use servo::tool;
 use std::{env, fs, path::{Path, PathBuf}, process};

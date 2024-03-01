@@ -27,9 +27,13 @@ pub fn emulate(args: &ArgMatches) -> anyhow::Result<()> {
 	loop {
 		mock_vehicle_state.sensor_readings.insert("KBPT".to_owned(), Measurement { value: rand::random::<f64>() * 120.0, unit: Unit::Psi });
 		mock_vehicle_state.sensor_readings.insert("WTPT".to_owned(), Measurement { value: rand::random::<f64>() * 1000.0, unit: Unit::Psi });
+		mock_vehicle_state.sensor_readings.insert("BBV_V".to_owned(), Measurement { value: rand::random::<f64>() * 24.0, unit: Unit::Volts });
+		mock_vehicle_state.sensor_readings.insert("BBV_I".to_owned(), Measurement { value: rand::random::<f64>() * 0.1, unit: Unit::Amps });
+		mock_vehicle_state.valve_states.insert("BBV".to_owned(), ValveState::Closed);
+		mock_vehicle_state.valve_states.insert("OMV".to_owned(), ValveState::Open);
 		raw = postcard::to_allocvec(&mock_vehicle_state)?;
 
 		data_socket.send(&raw)?;
-		thread::sleep(Duration::from_millis(1));
+		thread::sleep(Duration::from_millis(10));
 	}
 }
