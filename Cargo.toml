@@ -12,6 +12,7 @@ base64 = "0.13"
 clap = "4.4.6"
 common = { git = "https://github.com/gt-space/common.git", features = ["rusqlite"] }
 dns-lookup = "2.0"
+hdf5 = { git = "https://github.com/aldanor/hdf5-rust.git" }
 include_dir = "0.7"
 jeflog = "0.1"
 openssl = { version = "0.10", features = ["vendored"] }
