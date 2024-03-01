@@ -322,7 +322,7 @@ checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+ssh://git@github-research.gatech.edu/YJSP/common#c08ee0efafd3ea2ec5ca9b57be2f5d9eac077da6"
+source = "git+ssh://git@github.com/gt-space/common#8ba8f775f66ef098dc6bfd4ac51f4bb54fd95a7f"
 dependencies = [
  "jeflog",
  "postcard",
