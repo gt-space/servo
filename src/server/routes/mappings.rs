@@ -1,9 +1,11 @@
-use actix_web::{error, web::{Data, Json}, HttpResponse};
+use axum::{extract::State, Json};
 use common::comm::NodeMapping;
 use rusqlite::params;
-use crate::{error::internal, flight::FlightComputer, Database};
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use std::collections::HashMap;
+
+use crate::server::{self, error::{bad_request, internal, not_found}, SharedState};
 
 /// Request struct for getting mappings.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -13,8 +15,11 @@ pub struct GetMappingResponse {
 }
 
 /// A route function which retrieves the current stored mappings.
-pub async fn get_mappings(database: Data<Database>) -> actix_web::Result<Json<serde_json::Value>> {
-	let database = database.connection().lock().await;
+pub async fn get_mappings(State(shared): State<SharedState>) -> server::Result<Json<JsonValue>> {
+	let database = shared.database
+		.connection
+		.lock()
+		.await;
 
 	let mappings = database
 		.prepare("
@@ -33,7 +38,7 @@ pub async fn get_mappings(database: Data<Database>) -> actix_web::Result<Json<se
 				normally_closed
 			FROM NodeMappings
 		")
-		.map_err(|_| error::ErrorInternalServerError("error preparing sql statement"))?
+		.map_err(internal)?
 		.query_and_then([], |row| {
 			let configuration_id = row.get(0)?;
 
@@ -53,9 +58,9 @@ pub async fn get_mappings(database: Data<Database>) -> actix_web::Result<Json<se
 
 			Ok((configuration_id, mapping))
 		})
-		.map_err(|_| error::ErrorInternalServerError("failed to query database"))?
-		.collect::<Result<Vec<(String, NodeMapping)>, rusqlite::Error>>()
-		.map_err(|_| error::ErrorInternalServerError("failed to parse database entries into configuration"))?;
+		.map_err(internal)?
+		.collect::<rusqlite::Result<Vec<(String, NodeMapping)>>>()
+		.map_err(internal)?;
 
 	let mut configurations = HashMap::<String, Vec<NodeMapping>>::new();
 
@@ -67,7 +72,7 @@ pub async fn get_mappings(database: Data<Database>) -> actix_web::Result<Json<se
 		}
 	}
 
-	Ok(Json(serde_json::to_value(&configurations)?))
+	Ok(Json(serde_json::to_value(&configurations).unwrap()))
 }
 
 /// Request struct for setting a mapping.
@@ -82,11 +87,13 @@ pub struct SetMappingsRequest {
 
 /// A route function which deletes and replaces a previous configuration
 pub async fn post_mappings(
-	database: Data<Database>,
-	flight_computer: Data<FlightComputer>,
-	request: Json<SetMappingsRequest>,
-) -> actix_web::Result<HttpResponse> {
-	let database = database.connection().lock().await;
+	State(shared): State<SharedState>,
+	Json(request): Json<SetMappingsRequest>,
+) -> server::Result<()> {
+	let database = shared.database
+		.connection
+		.lock()
+		.await;
 
 	database
 		.execute("DELETE FROM NodeMappings WHERE configuration_id = ?1", [&request.configuration_id])
@@ -124,79 +131,87 @@ pub async fn post_mappings(
 				mapping.powered_threshold,
 				mapping.normally_closed,
 			])
-			.map_err(|err| error::ErrorInternalServerError(format!("sql error: {}", err.to_string())))?;
+			.map_err(internal)?;
 	}
 
 	drop(database);
 
-	flight_computer
-		.send_mappings()
-		.await
-		.map_err(|_| error::ErrorInternalServerError("failed to send mappings to flight computer"))?;
+	if let Some(flight) = shared.flight.0.lock().await.as_mut() {
+		flight
+			.send_mappings()
+			.await
+			.map_err(internal)?;
+	}
 
-	Ok(HttpResponse::Ok().finish())
+	Ok(())
 }
 
 /// A route function which inserts a new mapping or updates an existing one
 pub async fn put_mappings(
-	database: Data<Database>,
-	flight_computer: Data<FlightComputer>,
-	request: Json<SetMappingsRequest>,
-) -> actix_web::Result<HttpResponse> {
-	let database = database.connection().lock().await;
+	State(shared): State<SharedState>,
+	Json(request): Json<SetMappingsRequest>,
+) -> server::Result<()> {
+	let database = shared.database
+		.connection
+		.lock()
+		.await;
 
 	for mapping in &request.mappings {
-		database.execute("
-			INSERT INTO NodeMappings (
-				configuration_id,
-				text_id,
-				board_id,
-				channel_type,
-				channel,
-				computer,
-				max,
-				min,
-				calibrated_offset,
-				connected_threshold,
-				powered_threshold,
-				normally_closed,
-				active
-			) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, TRUE)
-			ON CONFLICT (configuration_id, text_id) DO UPDATE SET
-				board_id = excluded.board_id,
-				channel = excluded.channel,
-				channel_type = excluded.channel_type,
-				computer = excluded.computer,
-				scale = excluded.scale,
-				offset = excluded.offset,
-				connected_threshold = excluded.connected_threshold,
-				powered_threshold = excluded.powered_threshold,
-				normally_closed = excluded.normally_closed,
-				active = excluded.active
-		", params![
-			request.configuration_id,
-			mapping.text_id,
-			mapping.board_id,
-			mapping.channel_type,
-			mapping.channel,
-			mapping.computer,
-			mapping.max,
-			mapping.min,
-			mapping.calibrated_offset,
-			mapping.connected_threshold,
-			mapping.powered_threshold,
-			mapping.normally_closed,
-		]).map_err(|_| error::ErrorInternalServerError("sql error"))?;
+		database
+			.execute("
+				INSERT INTO NodeMappings (
+					configuration_id,
+					text_id,
+					board_id,
+					channel_type,
+					channel,
+					computer,
+					max,
+					min,
+					calibrated_offset,
+					connected_threshold,
+					powered_threshold,
+					normally_closed,
+					active
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, TRUE)
+				ON CONFLICT (configuration_id, text_id) DO UPDATE SET
+					board_id = excluded.board_id,
+					channel = excluded.channel,
+					channel_type = excluded.channel_type,
+					computer = excluded.computer,
+					scale = excluded.scale,
+					offset = excluded.offset,
+					connected_threshold = excluded.connected_threshold,
+					powered_threshold = excluded.powered_threshold,
+					normally_closed = excluded.normally_closed,
+					active = excluded.active
+			", params![
+				request.configuration_id,
+				mapping.text_id,
+				mapping.board_id,
+				mapping.channel_type,
+				mapping.channel,
+				mapping.computer,
+				mapping.max,
+				mapping.min,
+				mapping.calibrated_offset,
+				mapping.connected_threshold,
+				mapping.powered_threshold,
+				mapping.normally_closed,
+			])
+			.map_err(internal)?;
 	}
 
 	drop(database);
 
-	flight_computer
-		.send_mappings()
-		.await
-		.map_err(|_| error::ErrorInternalServerError("failed to send mappings to flight computer"))?;
+	if let Some(flight) = shared.flight.0.lock().await.as_mut() {
+		flight
+			.send_mappings()
+			.await
+			.map_err(internal)?;
+	}
 
-	Ok(HttpResponse::Ok().finish())
+	Ok(())
 }
 
 /// The request struct used with the route function to delete mappings.
@@ -212,11 +227,13 @@ pub struct DeleteMappingsRequest {
 
 /// A route function which deletes the specified mappings.
 pub async fn delete_mappings(
-	database: Data<Database>,
-	flight_computer: Data<FlightComputer>,
-	request: Json<DeleteMappingsRequest>,
-) -> actix_web::Result<HttpResponse> {
-	let database = database.connection().lock().await;
+	State(shared): State<SharedState>,
+	Json(request): Json<DeleteMappingsRequest>,
+) -> server::Result<()> {
+	let database = shared.database
+		.connection
+		.lock()
+		.await;
 
 	// if the mappings are specified, then only delete them
 	// if not, then delete all mappings for that configuration (thus deleting the config)
@@ -227,22 +244,21 @@ pub async fn delete_mappings(
 					"DELETE FROM NodeMappings WHERE configuration_id = ?1 AND text_id = ?2",
 					params![request.configuration_id, mapping.text_id]
 				)
-				.map_err(|error| error::ErrorInternalServerError(error.to_string()))?;
+				.map_err(internal)?;
 		}
 	} else {
 		database
 			.execute("DELETE FROM NodeMappings WHERE configuration_id = ?1", params![request.configuration_id])
-			.map_err(|error| error::ErrorInternalServerError(error.to_string()))?;
+			.map_err(internal)?;
 	}
 
-	drop(database);
+	if let Some(flight) = shared.flight.0.lock().await.as_mut() {
+		flight.send_mappings()
+			.await
+			.map_err(internal)?;
+	}
 
-	flight_computer
-		.send_mappings()
-		.await
-		.map_err(|_| error::ErrorInternalServerError("failed to send mappings to flight computer"))?;
-
-	Ok(HttpResponse::Ok().finish())
+	Ok(())
 }
 
 /// Request/response struct for getting and setting the active configuration.
@@ -253,53 +269,60 @@ pub struct ActiveConfiguration {
 
 /// A route function which activates a particular configuration
 pub async fn activate_configuration(
-	database: Data<Database>,
-	request: Json<ActiveConfiguration>,
-	flight_computer: Data<FlightComputer>,
-) -> actix_web::Result<HttpResponse> {
-	let database = database.connection().lock().await;
+	State(shared): State<SharedState>,
+	Json(request): Json<ActiveConfiguration>,
+) -> server::Result<()> {
+	let database = shared.database
+		.connection
+		.lock()
+		.await;
 
 	database
 		.execute("UPDATE NodeMappings SET active = FALSE WHERE active = TRUE", [])
-		.map_err(|_| error::ErrorInternalServerError("sql error"))?;
+		.map_err(internal)?;
 
 	let rows_updated = database
 		.execute("UPDATE NodeMappings SET active = TRUE WHERE configuration_id = ?1", [&request.configuration_id])
-		.map_err(|_| error::ErrorInternalServerError("sql error"))?;
+		.map_err(internal)?;
 
 	drop(database);
 
 	if rows_updated > 0 {
-		flight_computer
-			.send_mappings()
-			.await
-			.map_err(|_| error::ErrorInternalServerError("failed to send mappings to flight computer"))?;
+		if let Some(flight) = shared.flight.0.lock().await.as_mut() {
+			flight
+				.send_mappings()
+				.await
+				.map_err(internal)?;
+		}
 
-		Ok(HttpResponse::Ok().finish())
 	} else {
-		Err(error::ErrorBadRequest("configuration_id does not exist"))
+		return Err(bad_request("configuration_id does not exist"));
 	}
+
+	Ok(())
 }
 
 /// A route function which returns the active configuration
-pub async fn get_active_configuration(database: Data<Database>) -> actix_web::Result<Json<ActiveConfiguration>> {
-	let configuration_id = database
-		.connection()
+pub async fn get_active_configuration(State(shared): State<SharedState>) -> server::Result<Json<ActiveConfiguration>> {
+	let configuration_id = shared.database
+		.connection
 		.lock()
 		.await
 		.query_row("SELECT configuration_id FROM NodeMappings WHERE active = TRUE", [], |row| row.get::<_, String>(0))
-		.map_err(|_| error::ErrorNotFound("no configurations active"))?;
+		.map_err(|_| not_found("no configurations active"))?;
 
 	Ok(Json(ActiveConfiguration { configuration_id }))
 }
 
+/// Maps sensor names (stored in mappings) to calibrated offset floats.
+pub type CalibratedOffsets = HashMap<String, f64>;
+
 /// Route handler to calibrate all sensors in the current configuration.
-pub async fn calibrate(
-	database: Data<Database>,
-	flight_computer: Data<FlightComputer>
-) -> actix_web::Result<Json<HashMap<String, f64>>> {
-	let vehicle_state = &flight_computer.vehicle_state().0;
-	let database = database.connection().lock().await;
+pub async fn calibrate(State(shared): State<SharedState>) -> server::Result<Json<CalibratedOffsets>> {
+	let database = shared.database
+		.connection
+		.lock()
+		.await;
 
 	let to_calibrate = database
 		.prepare("
@@ -315,7 +338,7 @@ pub async fn calibrate(
 		.collect::<rusqlite::Result<Vec<String>>>()
 		.map_err(internal)?;
 
-	let vehicle_state = vehicle_state.lock().await;
+	let vehicle_state = shared.vehicle.0.lock().await.clone();
 	let mut updated = HashMap::new();
 
 	for sensor in to_calibrate {
@@ -332,13 +355,12 @@ pub async fn calibrate(
 		}
 	}
 
-	drop(database);
-	drop(vehicle_state);
-
-	flight_computer
-		.send_mappings()
-		.await
-		.map_err(internal)?;
+	if let Some(flight) = shared.flight.0.lock().await.as_mut() {
+		flight.send_mappings()
+			.await
+			.map_err(internal)?;
+	}
+	
 
 	Ok(Json(updated))
 }

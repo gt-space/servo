@@ -1,7 +1,8 @@
-use common::{ToPrettyString, comm::VehicleState};
-use std::{time::Duration, ops::Div, io::{self, Write}, sync::Arc};
+use common::ToPrettyString;
+use std::{time::Duration, ops::Div, io::{self, Write}};
 use sysinfo::{System, SystemExt, CpuExt};
-use tokio::sync::{Mutex, Notify};
+
+use crate::server::SharedState;
 
 struct Terminal;
 
@@ -49,9 +50,7 @@ impl Container {
 }
 
 /// Continuously refreshes and updates the display with new data.
-pub async fn display(vehicle_state: Arc<(Mutex<VehicleState>, Notify)>) {
-	let vehicle_state = Arc::downgrade(&vehicle_state);
-
+pub async fn display(shared: SharedState) {
 	Terminal::clear();
 	print!("\x1b[999;1f");
 
@@ -107,38 +106,35 @@ pub async fn display(vehicle_state: Arc<(Mutex<VehicleState>, Notify)>) {
 		
 		// display network statistics
 
-		if let Some(vehicle_state) = vehicle_state.upgrade() {
-			// display sensor data
-			let vehicle_state = vehicle_state.0
-				.lock()
-				.await;
+		// display sensor data
+		let vehicle_state = shared.vehicle.0
+			.lock()
+			.await
+			.clone();
 
-			sensors_container.height = vehicle_state.sensor_readings.len() + 2;
-			Terminal::draw(&sensors_container);
+		sensors_container.height = vehicle_state.sensor_readings.len() + 2;
+		Terminal::draw(&sensors_container);
 
-			let mut sensor_readings = vehicle_state.sensor_readings
-				.iter()
-				.collect::<Vec<_>>();
+		let mut sensor_readings = vehicle_state.sensor_readings
+			.iter()
+			.collect::<Vec<_>>();
 
-			sensor_readings.sort_by(|a, b| a.0.cmp(b.0));
+		sensor_readings.sort_by(|a, b| a.0.cmp(b.0));
 
-			for (i, (name, value)) in sensor_readings.iter().enumerate() {
-				let pretty_value = value.to_pretty_string();
+		for (i, (name, value)) in sensor_readings.iter().enumerate() {
+			let pretty_value = value.to_pretty_string();
 
-				sensors_container.write_line(i, &format!("{name}: {pretty_value}"));
-			}
+			sensors_container.write_line(i, &format!("{name}: {pretty_value}"));
+		}
 
-			// display valve states
-			valves_container.height = vehicle_state.valve_states.len() + 2;
-			Terminal::draw(&valves_container);
+		// display valve states
+		valves_container.height = vehicle_state.valve_states.len() + 2;
+		Terminal::draw(&valves_container);
 
-			for (i, (name, state)) in vehicle_state.valve_states.iter().enumerate() {
-				let pretty_state = state.to_pretty_string();
+		for (i, (name, state)) in vehicle_state.valve_states.iter().enumerate() {
+			let pretty_state = state.to_pretty_string();
 
-				valves_container.write_line(i, &format!("{name}: {pretty_state}"));
-			}
-		} else {
-			break;
+			valves_container.write_line(i, &format!("{name}: {pretty_state}"));
 		}
 
 		// restore cursor position
