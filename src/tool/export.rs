@@ -1,5 +1,5 @@
 use serde_json::json;
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, time::Duration};
 
 pub fn export(from: Option<f64>, to: Option<f64>, output_path: &str) -> anyhow::Result<()> {
 	let output_path = PathBuf::from(output_path);
@@ -19,6 +19,7 @@ pub fn export(from: Option<f64>, to: Option<f64>, output_path: &str) -> anyhow::
 			"from": from,
 			"to": to
 		}))
+		.timeout(Duration::from_secs(3600))
 		.send()?
 		.text()?;
 

@@ -62,13 +62,12 @@ impl FlightComputer {
 				SELECT
 					text_id,
 					board_id,
-					channel_type,
+					sensor_type,
 					channel,
 					computer,
 					max,
 					min,
 					calibrated_offset,
-					connected_threshold,
 					powered_threshold,
 					normally_closed
 				FROM NodeMappings WHERE active = TRUE
@@ -77,15 +76,14 @@ impl FlightComputer {
 				Ok(NodeMapping {
 					text_id: row.get(0)?,
 					board_id: row.get(1)?,
-					channel_type: row.get(2)?,
+					sensor_type: row.get(2)?,
 					channel: row.get(3)?,
 					computer: row.get(4)?,
 					max: row.get(5)?,
 					min: row.get(6)?,
 					calibrated_offset: row.get(7)?,
-					connected_threshold: row.get(8)?,
-					powered_threshold: row.get(9)?,
-					normally_closed: row.get(10)?,
+					powered_threshold: row.get(8)?,
+					normally_closed: row.get(9)?,
 				})
 			})?
 			.collect::<Result<Vec<NodeMapping>, rusqlite::Error>>()?;

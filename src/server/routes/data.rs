@@ -97,7 +97,7 @@ pub async fn export(
 
 					// see comment in sensor readings above.
 					if let Some(valve_state) = valve_state {
-						content += &valve_state.to_string();
+						content += &valve_state.actual.to_string();
 					}
 				}
 

@@ -27,13 +27,12 @@ pub async fn get_mappings(State(shared): State<SharedState>) -> server::Result<J
 				configuration_id,
 				text_id,
 				board_id,
-				channel_type,
+				sensor_type,
 				channel,
 				computer,
 				max,
 				min,
 				calibrated_offset,
-				connected_threshold,
 				powered_threshold,
 				normally_closed
 			FROM NodeMappings
@@ -45,15 +44,14 @@ pub async fn get_mappings(State(shared): State<SharedState>) -> server::Result<J
 			let mapping = NodeMapping {
 				text_id: row.get(1)?,
 				board_id: row.get(2)?,
-				channel_type: row.get(3)?,
+				sensor_type: row.get(3)?,
 				channel: row.get(4)?,
 				computer: row.get(5)?,
 				max: row.get(6)?,
 				min: row.get(7)?,
 				calibrated_offset: row.get(8)?,
-				connected_threshold: row.get(9)?,
-				powered_threshold: row.get(10)?,
-				normally_closed: row.get(11)?,
+				powered_threshold: row.get(9)?,
+				normally_closed: row.get(10)?,
 			};
 
 			Ok((configuration_id, mapping))
@@ -106,28 +104,26 @@ pub async fn post_mappings(
 					configuration_id,
 					text_id,
 					board_id,
-					channel_type,
+					sensor_type,
 					channel,
 					computer,
 					max,
 					min,
 					calibrated_offset,
-					connected_threshold,
 					powered_threshold,
 					normally_closed,
 					active
-				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, TRUE)
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, TRUE)
 			", params![
 				request.configuration_id,
 				mapping.text_id,
 				mapping.board_id,
-				mapping.channel_type,
+				mapping.sensor_type,
 				mapping.channel,
 				mapping.computer,
 				mapping.max,
 				mapping.min,
 				mapping.calibrated_offset,
-				mapping.connected_threshold,
 				mapping.powered_threshold,
 				mapping.normally_closed,
 			])
@@ -163,25 +159,23 @@ pub async fn put_mappings(
 					configuration_id,
 					text_id,
 					board_id,
-					channel_type,
+					sensor_types,
 					channel,
 					computer,
 					max,
 					min,
 					calibrated_offset,
-					connected_threshold,
 					powered_threshold,
 					normally_closed,
 					active
-				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, TRUE)
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, TRUE)
 				ON CONFLICT (configuration_id, text_id) DO UPDATE SET
 					board_id = excluded.board_id,
 					channel = excluded.channel,
-					channel_type = excluded.channel_type,
+					sensor_types = excluded.sensor_types,
 					computer = excluded.computer,
 					scale = excluded.scale,
 					offset = excluded.offset,
-					connected_threshold = excluded.connected_threshold,
 					powered_threshold = excluded.powered_threshold,
 					normally_closed = excluded.normally_closed,
 					active = excluded.active
@@ -189,13 +183,12 @@ pub async fn put_mappings(
 				request.configuration_id,
 				mapping.text_id,
 				mapping.board_id,
-				mapping.channel_type,
+				mapping.sensor_type,
 				mapping.channel,
 				mapping.computer,
 				mapping.max,
 				mapping.min,
 				mapping.calibrated_offset,
-				mapping.connected_threshold,
 				mapping.powered_threshold,
 				mapping.normally_closed,
 			])
@@ -329,7 +322,7 @@ pub async fn calibrate(State(shared): State<SharedState>) -> server::Result<Json
 			SELECT text_id
 			FROM NodeMappings
 			WHERE
-				channel_type IN ('current_loop', 'differential_signal')
+				sensor_type IN ('pt', 'load_cell')
 				AND active
 		")
 		.map_err(internal)?
