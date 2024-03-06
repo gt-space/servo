@@ -322,7 +322,7 @@ checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://github.com/gt-space/common#8ba8f775f66ef098dc6bfd4ac51f4bb54fd95a7f"
+source = "git+https://github.com/gt-space/common?branch=triggers#3c250905bdb24cebcdd98536aa6c10b2a7571f00"
 dependencies = [
  "jeflog",
  "postcard",
