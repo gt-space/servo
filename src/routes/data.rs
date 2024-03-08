@@ -1,9 +1,9 @@
 use actix_web::{error, HttpResponse, Result, web::{Data, Json}};
-use common::comm::{ValveState, VehicleState, Measurement, Unit};
+use common::comm::{ValveState, VehicleState};
 use crate::{Database, forwarding::ForwardingAgent};
 use crate::error::internal;
 use hdf5;
-use hdf5::{Group, Object, Dataset, DatasetBuilder, DatasetBuilderData}; // Does not include File to avoid overlaps
+use hdf5::{Group, Dataset, DatasetBuilder}; // Does not include File to avoid overlaps
 use std::sync::atomic::{AtomicU32, Ordering};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, sync::Arc};
@@ -321,6 +321,8 @@ mod tests {
 	use rand::Rng;
 	use rand::prelude::*;
 	use std::collections::HashMap;
+	use common::comm::Measurement;
+	use common::comm::Unit;
 	use std::time::Duration;
 	use super::*;
     #[test]
