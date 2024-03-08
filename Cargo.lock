@@ -468,6 +468,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "98cc8fbded0c607b7ba9dd60cd98df59af97e84d24e49c8557331cfc26d301ce"
 
 [[package]]
+name = "cmake"
+version = "0.1.50"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a31c789563b815f77f4250caee12365734369f942439b7defd71e18a48197130"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "cobs"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -873,12 +882,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "hdf5-src"
+version = "0.8.1"
+source = "git+https://github.com/aldanor/hdf5-rust.git#4a9b537f0c7ba3f75712ba240fe9ffeb1fd9447e"
+dependencies = [
+ "cmake",
+ "libz-sys",
+]
+
+[[package]]
 name = "hdf5-sys"
 version = "0.8.1"
 source = "git+https://github.com/aldanor/hdf5-rust.git#4a9b537f0c7ba3f75712ba240fe9ffeb1fd9447e"
 dependencies = [
+ "hdf5-src",
  "libc",
  "libloading",
+ "libz-sys",
  "pkg-config",
  "regex",
  "serde",
