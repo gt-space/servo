@@ -3,7 +3,7 @@ use common::comm::Sequence;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
-use crate::server::{self, error::{bad_request, internal}, SharedState};
+use crate::server::{self, error::{bad_request, internal}, flight, SharedState};
 
 /// Used in sequences response struct to attach the configuration ID.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -143,6 +143,43 @@ pub async fn run_sequence(
 	} else {
 		return Err(internal("flight computer not connected"));
 	}
+
+	Ok(())
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+pub struct StopSequenceRequest {
+	/// Name of the sequence to be stopped.
+	pub name: String
+}
+
+/// Route function which instructs the flight computer to stop a sequence.
+pub async fn stop_sequence(
+	State(shared): State<SharedState>,
+	Json(request): Json<StopSequenceRequest>,
+) -> server::Result<()> {
+	shared.flight.0
+		.lock()
+		.await
+		.as_mut()
+		.ok_or(internal("flight computer not connected"))?
+		.stop_sequence(request.name)
+		.await
+		.map_err(internal)?;
+
+	Ok(())
+}
+
+/// Route function which instructs the flight computer to abort.
+pub async fn abort(State(shared): State<SharedState>) -> server::Result<()> {
+	shared.flight.0
+		.lock()
+		.await
+		.as_mut()
+		.ok_or(internal("flight computer not connected"))?
+		.abort()
+		.await
+		.map_err(internal)?;
 
 	Ok(())
 }

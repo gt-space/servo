@@ -44,6 +44,8 @@ pub fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 				.route("/operator/sequence", put(routes::save_sequence))
 				.route("/operator/sequence", delete(routes::delete_sequence))
 				.route("/operator/run-sequence", post(routes::run_sequence))
+				.route("/operator/stop-sequence", post(routes::stop_sequence))
+				.route("/operator/abort", post(routes::abort))
 				.layer(cors)
 				.with_state(shared_state)
 				.into_make_service_with_connect_info::<SocketAddr>();

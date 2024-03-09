@@ -107,6 +107,24 @@ impl FlightComputer {
 		Ok(())
 	}
 
+	/// Instructs the flight computer to stop a sequence.
+	pub async fn stop_sequence(&mut self, name: String) -> anyhow::Result<()> {
+		let message = FlightControlMessage::StopSequence(name);
+		let serialized = postcard::to_allocvec(&message)?;
+
+		self.send_bytes(&serialized).await?;
+		Ok(())
+	}
+
+	/// Instructs the flight computer to abort.
+	pub async fn abort(&mut self) -> anyhow::Result<()> {
+		let message = FlightControlMessage::Abort;
+		let serialized = postcard::to_allocvec(&message)?;
+
+		self.send_bytes(&serialized).await?;
+		Ok(())
+	}
+
 	/// Repeatedly receives vehicle state information from the flight computer.
 	pub fn receive_vehicle_state(&self) -> impl Future<Output = io::Result<()>> {
 		let vehicle_state = self.vehicle_state.clone();
