@@ -328,7 +328,7 @@ checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://github.com/gt-space/common#9862c56d87bb00da01dfa6e084637fbdc1902793"
+source = "git+https://github.com/gt-space/common#5adf7632f9eb07c80a52394e255831ed54922597"
 dependencies = [
  "jeflog",
  "postcard",
@@ -1818,9 +1818,9 @@ dependencies = [
 
 [[package]]
 name = "serde_path_to_error"
-version = "0.1.15"
+version = "0.1.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebd154a240de39fdebcf5775d2675c204d7c13cf39a4c697be6493c8e734337c"
+checksum = "af99884400da37c88f5e9146b7f1fd0fbcae8f6eec4e9da38b67d05486f814a6"
 dependencies = [
  "itoa",
  "serde",

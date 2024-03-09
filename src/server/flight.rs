@@ -1,4 +1,4 @@
-use common::comm::{FlightControlMessage, NodeMapping, VehicleState, Sequence};
+use common::comm::{FlightControlMessage, NodeMapping, Sequence, Trigger, VehicleState};
 use jeflog::warn;
 use super::{Database, SharedState};
 use std::{future::Future, sync::Arc};
@@ -117,6 +117,15 @@ impl FlightComputer {
 	/// Instructs the flight computer to abort.
 	pub async fn abort(&mut self) -> anyhow::Result<()> {
 		let message = FlightControlMessage::Abort;
+		let serialized = postcard::to_allocvec(&message)?;
+
+		self.send_bytes(&serialized).await?;
+		Ok(())
+	}
+
+	/// Sends all triggers stored in the database to the flight computer, active or not.
+	pub async fn send_trigger(&mut self, trigger: Trigger) -> anyhow::Result<()> {
+		let message = FlightControlMessage::Trigger(trigger);
 		let serialized = postcard::to_allocvec(&message)?;
 
 		self.send_bytes(&serialized).await?;
