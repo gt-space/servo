@@ -1,8 +1,8 @@
-use common::ToPrettyString;
+use common::comm::CompositeValveState;
+use crate::server::SharedState;
 use std::{time::Duration, ops::Div, io::{self, Write}};
 use sysinfo::{System, SystemExt, CpuExt};
 
-use crate::server::SharedState;
 
 struct Terminal;
 
@@ -122,19 +122,15 @@ pub async fn display(shared: SharedState) {
 		sensor_readings.sort_by(|a, b| a.0.cmp(b.0));
 
 		for (i, (name, value)) in sensor_readings.iter().enumerate() {
-			let pretty_value = value.to_pretty_string();
-
-			sensors_container.write_line(i, &format!("{name}: {pretty_value}"));
+			sensors_container.write_line(i, &format!("{name}: {value}"));
 		}
 
 		// display valve states
 		valves_container.height = vehicle_state.valve_states.len() + 2;
 		Terminal::draw(&valves_container);
 
-		for (i, (name, state)) in vehicle_state.valve_states.iter().enumerate() {
-			let pretty_state = state.to_pretty_string();
-
-			valves_container.write_line(i, &format!("{name}: {pretty_state}"));
+		for (i, (name, CompositeValveState { commanded, actual })) in vehicle_state.valve_states.iter().enumerate() {
+			valves_container.write_line(i, &format!("{name}: {actual} ({commanded})"));
 		}
 
 		// restore cursor position
