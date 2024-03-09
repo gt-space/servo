@@ -46,6 +46,7 @@ pub fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 				.route("/operator/run-sequence", post(routes::run_sequence))
 				.route("/operator/stop-sequence", post(routes::stop_sequence))
 				.route("/operator/abort", post(routes::abort))
+				.route("/operator/trigger", get(routes::get_triggers))
 				.route("/operator/trigger", put(routes::set_trigger))
 				.route("/operator/trigger", delete(routes::delete_trigger))
 				.layer(cors)
