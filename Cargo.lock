@@ -328,7 +328,7 @@ checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://github.com/gt-space/common?branch=valve-feedback#27978f8f67858e823b93b8a91f21eec05010b005"
+source = "git+https://github.com/gt-space/common#9862c56d87bb00da01dfa6e084637fbdc1902793"
 dependencies = [
  "jeflog",
  "postcard",

@@ -1,6 +1,7 @@
 use serde_json::json;
 use std::{fs, path::PathBuf, time::Duration};
 
+/// Tool function which exports the vehicle state data held in the database.
 pub fn export(from: Option<f64>, to: Option<f64>, output_path: &str) -> anyhow::Result<()> {
 	let output_path = PathBuf::from(output_path);
 

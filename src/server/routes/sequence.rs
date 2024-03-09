@@ -3,7 +3,7 @@ use common::comm::Sequence;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
-use crate::server::{self, error::{bad_request, internal}, flight, SharedState};
+use crate::server::{self, error::{bad_request, internal}, SharedState};
 
 /// Used in sequences response struct to attach the configuration ID.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -147,6 +147,7 @@ pub async fn run_sequence(
 	Ok(())
 }
 
+/// Request struct for stopping a sequence.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct StopSequenceRequest {
 	/// Name of the sequence to be stopped.

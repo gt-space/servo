@@ -35,7 +35,7 @@ pub fn emulate_sam(flight: SocketAddr) -> anyhow::Result<()> {
 	socket.connect(flight)?;
 
 	let mut buffer = [0; 1024];
-	let mut data_points = vec![
+	let data_points = vec![
 		DataPoint { value: 0.0, timestamp: 0.0, channel: 1, channel_type: ChannelType::CurrentLoop },
 		DataPoint { value: 0.0, timestamp: 0.0, channel: 1, channel_type: ChannelType::RailVoltage },
 		DataPoint { value: 0.0, timestamp: 0.0, channel: 1, channel_type: ChannelType::RailCurrent },
@@ -46,12 +46,10 @@ pub fn emulate_sam(flight: SocketAddr) -> anyhow::Result<()> {
 		DataPoint { value: 0.00, timestamp: 0.0, channel: 1, channel_type: ChannelType::ValveCurrent },
 	];
 
-	loop {
-		// for data_point in data_points.iter_mut() {
-		// 	data_point.value += random::<f64>() * 2.0 - 1.0;
-		// }
+	let board_id = "sam-01";
 
-		let message = DataMessage::Sam(Cow::Borrowed(&data_points));
+	loop {
+		let message = DataMessage::Sam(board_id.to_owned(), Cow::Borrowed(&data_points));
 		let serialized = postcard::to_slice(&message, &mut buffer)?;
 
 		socket.send(serialized)?;
