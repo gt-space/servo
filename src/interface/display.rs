@@ -129,7 +129,13 @@ pub async fn display(shared: SharedState) {
 		valves_container.height = vehicle_state.valve_states.len() + 2;
 		Terminal::draw(&valves_container);
 
-		for (i, (name, CompositeValveState { commanded, actual })) in vehicle_state.valve_states.iter().enumerate() {
+		let mut valve_states = vehicle_state.valve_states
+			.iter()
+			.collect::<Vec<_>>();
+
+		valve_states.sort_by(|a, b| a.0.cmp(b.0));
+
+		for (i, (name, CompositeValveState { commanded, actual })) in valve_states.iter().enumerate() {
 			valves_container.write_line(i, &format!("{name}: {actual} ({commanded})"));
 		}
 
