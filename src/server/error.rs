@@ -37,24 +37,6 @@ pub fn not_found(message: impl ToString) -> ServerError {
 }
 
 /// Converts any arbitrary error type into a standardized `ServerError`.
-/// 
-/// This function is intended for use in route functions, where this is a
-/// common pattern:
-/// 
-/// ```
-/// database
-/// 	.execute("SELECT * FROM NodeMappings")
-/// 	.map_err(|error| error::ErrorBadRequest(error.to_string()))?;
-/// ```
-/// 
-/// This simple function replaces this boilerplate mess with the following:
-/// 
-/// ```
-/// database
-/// 	.execute("SELECT * FROM NodeMappings")
-/// 	.map_err(internal)?;
-/// ```
-/// 
 pub fn internal(message: impl ToString) -> ServerError {
 	ServerError::Raw(message.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
 }
