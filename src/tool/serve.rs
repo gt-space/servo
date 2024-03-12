@@ -1,4 +1,5 @@
 use axum::{routing::{delete, get, post, put}, Router};
+use clap::ArgMatches;
 use tower_http::cors::{self, CorsLayer};
 use crate::{interface, server::{routes, Database, FlightComputer, SharedState}};
 use std::{io, net::SocketAddr, path::Path};
@@ -7,8 +8,23 @@ use tokio::net::TcpListener;
 /// Performs the necessary setup to connect to the servo server.
 /// This function initializes database connections, spawns background tasks,
 /// and starts the HTTP server to serve the application upon request.
-pub fn serve(servo_dir: &Path) -> anyhow::Result<()> {
-	let database = Database::open(&servo_dir.join("database.sqlite"))?;
+pub fn serve(servo_dir: &Path, args: &ArgMatches) -> anyhow::Result<()> {
+	let volatile = args.get_one::<bool>("volatile")
+		.copied()
+		.unwrap_or(false);
+
+	let quiet = args.get_one::<bool>("quiet")
+		.copied()
+		.unwrap_or(false);
+
+	let database;
+
+	if volatile {
+		database = Database::volatile()?;
+	} else {
+		database = Database::open(&servo_dir.join("database.sqlite"))?;
+	}
+
 	database.migrate()?;
 
 	tokio::runtime::Builder::new_multi_thread()
@@ -21,7 +37,10 @@ pub fn serve(servo_dir: &Path) -> anyhow::Result<()> {
 
 			tokio::spawn(FlightComputer::auto_connect(&shared_state));
 			tokio::spawn(shared_state.database.log_vehicle_state(&shared_state));
-			tokio::spawn(interface::display(shared_state.clone()));
+
+			if !quiet {
+				tokio::spawn(interface::display(shared_state.clone()));
+			}
 
 			let cors = CorsLayer::new()
 				.allow_methods(cors::Any)

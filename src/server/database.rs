@@ -29,6 +29,13 @@ impl Database {
 		})
 	}
 
+	/// Opens a new `Database` in memory, so if it is closed, it's not saved.
+	pub fn volatile() -> rusqlite::Result<Self> {
+		Ok(Database {
+			connection: Arc::new(Mutex::new(SqlConnection::open_in_memory()?))
+		})
+	}
+
 	/// Migrates the database to the latest available migration version.
 	pub fn migrate(&self) -> anyhow::Result<()> {
 		let latest_migration = MIGRATIONS
