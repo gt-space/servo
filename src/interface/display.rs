@@ -1,5 +1,5 @@
 use common::comm::CompositeValveState;
-use crate::server::SharedState;
+use crate::server::Shared;
 use std::{time::Duration, ops::Div, io::{self, Write}};
 use sysinfo::{System, SystemExt, CpuExt};
 
@@ -50,7 +50,7 @@ impl Container {
 }
 
 /// Continuously refreshes and updates the display with new data.
-pub async fn display(shared: SharedState) {
+pub async fn display(shared: Shared) {
 	Terminal::clear();
 	print!("\x1b[999;1f");
 

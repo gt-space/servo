@@ -1,6 +1,6 @@
 use axum::{extract::State, Json};
 use common::comm::Sequence;
-use crate::server::{self, SharedState, error::{bad_request, internal}};
+use crate::server::{self, Shared, error::{bad_request, internal}};
 use serde::{Deserialize, Serialize};
 
 /// Request struct containing all necessary information to execute a command.
@@ -13,7 +13,7 @@ pub struct OperatorCommandRequest {
 
 /// Route handler to dispatch a single manual operator command
 pub async fn dispatch_operator_command(
-	State(shared): State<SharedState>,
+	State(shared): State<Shared>,
 	Json(request): Json<OperatorCommandRequest>,
 ) -> server::Result<()> {
 	if let Some(flight) = shared.flight.0.lock().await.as_mut() {

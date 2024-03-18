@@ -3,7 +3,7 @@ use common::comm::Sequence;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
-use crate::server::{self, error::{bad_request, internal}, SharedState};
+use crate::server::{self, error::{bad_request, internal}, Shared};
 
 /// Used in sequences response struct to attach the configuration ID.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -26,7 +26,7 @@ pub struct RetrieveSequenceResponse {
 }
 
 /// Route function to retrieve all sequences from the database.
-pub async fn retrieve_sequences(State(shared): State<SharedState>) -> server::Result<Json<RetrieveSequenceResponse>> {
+pub async fn retrieve_sequences(State(shared): State<Shared>) -> server::Result<Json<RetrieveSequenceResponse>> {
 	let sequences = shared.database
 		.connection
 		.lock()
@@ -62,7 +62,7 @@ pub struct SaveSequenceRequest {
 
 /// A route function which saves a sequence without running it.
 pub async fn save_sequence(
-	State(shared): State<SharedState>,
+	State(shared): State<Shared>,
 	Json(request): Json<SaveSequenceRequest>,
 ) -> server::Result<()> {
 	let decoded_script = base64::decode(&request.script)
@@ -94,7 +94,7 @@ pub struct DeleteSequenceRequest {
 
 /// Route function to delete a sequence from the database.
 pub async fn delete_sequence(
-	State(shared): State<SharedState>,
+	State(shared): State<Shared>,
 	Json(request): Json<DeleteSequenceRequest>,
 ) -> server::Result<()> {
 	shared.database
@@ -119,7 +119,7 @@ pub struct RunSequenceRequest {
 
 /// Route function which receives a sequence and sends it directly to the flight computer.
 pub async fn run_sequence(
-	State(shared): State<SharedState>,
+	State(shared): State<Shared>,
 	Json(request): Json<RunSequenceRequest>,
 ) -> server::Result<()> {
 	// TODO: Add check for active configuration against the configuration_id in the database
@@ -156,7 +156,7 @@ pub struct StopSequenceRequest {
 
 /// Route function which instructs the flight computer to stop a sequence.
 pub async fn stop_sequence(
-	State(shared): State<SharedState>,
+	State(shared): State<Shared>,
 	Json(request): Json<StopSequenceRequest>,
 ) -> server::Result<()> {
 	shared.flight.0
@@ -172,7 +172,7 @@ pub async fn stop_sequence(
 }
 
 /// Route function which instructs the flight computer to abort.
-pub async fn abort(State(shared): State<SharedState>) -> server::Result<()> {
+pub async fn abort(State(shared): State<Shared>) -> server::Result<()> {
 	shared.flight.0
 		.lock()
 		.await

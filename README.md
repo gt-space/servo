@@ -47,14 +47,3 @@ Of course, everyone makes mistakes, which is why all pull requests must be revie
 Effective debugging is essential on this project because this software is absolutely mission-critical. Using tools like **lldb** and **gdb** is recommended, especially for memory issues such as leaks. Segfaults should be less of an issue now since we are using Rust, but if you use _any_ unsafe code in a commit (such as interaction with hardware), please triple-check it for possible memory issues using one of these tools or another like them.
 
 We also want to steadily introduce unit testing across YJSP software projects, including this one. If you are coding a non-trivial item of Servo, please write unit tests for that item. Debugging now means 10x less debugging later.
-
-### Project Developers
-
-Big thanks to the developers hard at work making this project a reality:
-
-* **Abhinav Vemulapalli**: [@avemulapalli7](https://github-research.gatech.edu/avemulapalli7)
-* **Jahan Randeria**: [@jranderia3](https://github-research.gatech.edu/jranderia3)
-* **Ryan Otsuka**: [@rotsuka6](https://github-research.gatech.edu/rotsuka6)
-* **Shirley Benedict**: [@sbenedict6](https://github-research.gatech.edu/sbenedict6)
-
-* **Jeff Shelton** (RE): [@jshelton44](https://github-research.gatech.edu/jshelton44)

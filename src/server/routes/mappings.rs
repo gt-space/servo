@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 
-use crate::server::{self, error::{bad_request, internal, not_found}, SharedState};
+use crate::server::{self, error::{bad_request, internal, not_found}, Shared};
 
 /// Request struct for getting mappings.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -15,7 +15,7 @@ pub struct GetMappingResponse {
 }
 
 /// A route function which retrieves the current stored mappings.
-pub async fn get_mappings(State(shared): State<SharedState>) -> server::Result<Json<JsonValue>> {
+pub async fn get_mappings(State(shared): State<Shared>) -> server::Result<Json<JsonValue>> {
 	let database = shared.database
 		.connection
 		.lock()
@@ -85,7 +85,7 @@ pub struct SetMappingsRequest {
 
 /// A route function which deletes and replaces a previous configuration
 pub async fn post_mappings(
-	State(shared): State<SharedState>,
+	State(shared): State<Shared>,
 	Json(request): Json<SetMappingsRequest>,
 ) -> server::Result<()> {
 	let database = shared.database
@@ -144,7 +144,7 @@ pub async fn post_mappings(
 
 /// A route function which inserts a new mapping or updates an existing one
 pub async fn put_mappings(
-	State(shared): State<SharedState>,
+	State(shared): State<Shared>,
 	Json(request): Json<SetMappingsRequest>,
 ) -> server::Result<()> {
 	let database = shared.database
@@ -220,7 +220,7 @@ pub struct DeleteMappingsRequest {
 
 /// A route function which deletes the specified mappings.
 pub async fn delete_mappings(
-	State(shared): State<SharedState>,
+	State(shared): State<Shared>,
 	Json(request): Json<DeleteMappingsRequest>,
 ) -> server::Result<()> {
 	let database = shared.database
@@ -262,7 +262,7 @@ pub struct ActiveConfiguration {
 
 /// A route function which activates a particular configuration
 pub async fn activate_configuration(
-	State(shared): State<SharedState>,
+	State(shared): State<Shared>,
 	Json(request): Json<ActiveConfiguration>,
 ) -> server::Result<()> {
 	let database = shared.database
@@ -296,7 +296,7 @@ pub async fn activate_configuration(
 }
 
 /// A route function which returns the active configuration
-pub async fn get_active_configuration(State(shared): State<SharedState>) -> server::Result<Json<ActiveConfiguration>> {
+pub async fn get_active_configuration(State(shared): State<Shared>) -> server::Result<Json<ActiveConfiguration>> {
 	let configuration_id = shared.database
 		.connection
 		.lock()
@@ -311,7 +311,7 @@ pub async fn get_active_configuration(State(shared): State<SharedState>) -> serv
 pub type CalibratedOffsets = HashMap<String, f64>;
 
 /// Route handler to calibrate all sensors in the current configuration.
-pub async fn calibrate(State(shared): State<SharedState>) -> server::Result<Json<CalibratedOffsets>> {
+pub async fn calibrate(State(shared): State<Shared>) -> server::Result<Json<CalibratedOffsets>> {
 	let database = shared.database
 		.connection
 		.lock()

@@ -1,5 +1,5 @@
 use axum::{extract::State, Json};
-use crate::server::{self, error::internal, SharedState};
+use crate::server::{self, error::internal, Shared};
 use rusqlite::types::ValueRef;
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +18,7 @@ pub struct ExecuteSqlResponse {
 
 /// A route function which executes an arbitrary SQL query
 pub async fn execute_sql(
-	State(shared): State<SharedState>,
+	State(shared): State<Shared>,
 	Json(request): Json<ExecuteSqlRequest>,
 ) -> server::Result<Json<ExecuteSqlResponse>> {
 	let database = shared.database
