@@ -1,5 +1,6 @@
 use common::comm::{Computer, FlightControlMessage, NodeMapping, Sequence, Trigger, VehicleState};
 use jeflog::warn;
+use postcard::experimental::max_size::MaxSize;
 use super::{Database, Shared};
 use std::future::Future;
 use tokio::{io::{self, AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream, UdpSocket}};
@@ -115,7 +116,7 @@ pub fn auto_connect(server: &Shared) -> impl Future<Output = io::Result<()>> {
 
 	async move {
 		let listener = TcpListener::bind("0.0.0.0:5025").await?;
-		let mut buffer = [0; 256];
+		let mut buffer = [0; Computer::POSTCARD_MAX_SIZE];
 
 		loop {
 			let (mut stream, _) = listener.accept().await?;
