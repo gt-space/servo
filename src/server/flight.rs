@@ -100,8 +100,21 @@ impl FlightComputer {
 	}
 
 	/// Checks if the underlying TCP stream has been closed.
-	pub fn is_closed() {
+	pub fn check_closed(&self) -> bool {
+		let mut buffer = [0; 1];
 
+		// if the flight stream reads zero bytes, it's closed.
+		// this indicates that the current flight computer should not be there.
+		self.stream.try_read(&mut buffer).is_ok_and(|size| size == 0)
+	}
+
+	/// Sends a comprehensive update of mappings, triggers, and abort sequence to flight.
+	pub async fn update(&mut self) -> anyhow::Result<()> {
+		self.send_mappings().await?;
+		
+		// TODO: send triggers and abort sequence automatically
+
+		Ok(())
 	}
 }
 
@@ -141,12 +154,9 @@ pub fn auto_connect(server: &Shared) -> impl Future<Output = io::Result<()>> {
 				Computer::Flight => {
 					let mut flight = flight.0.lock().await;
 
+					// if there is a flight computer already in there, check if its stream is closed.
 					if let Some(existing) = &*flight {
-						let mut buffer = [0; 1];
-
-						// if the flight stream reads zero bytes, it's closed.
-						// this indicates that the current flight computer should not be there.
-						if existing.stream.try_read(&mut buffer).is_ok_and(|size| size == 0) {
+						if existing.check_closed() {
 							*flight = None;
 						}
 					}
@@ -154,10 +164,17 @@ pub fn auto_connect(server: &Shared) -> impl Future<Output = io::Result<()>> {
 					// only replace the flight connection with the new one if there isn't one there already.
 					// otherwise, this defaults to gracefully closing the new connection on drop.
 					if flight.is_none() {
-						*flight = Some(FlightComputer {
+						let mut new_flight = FlightComputer {
 							stream,
 							database: database.clone(),
-						});
+						};
+
+						if let Err(error) = new_flight.update().await {
+							warn!("Failed to send comprehensive update to new flight: {error}");
+							continue;
+						}
+
+						*flight = Some(new_flight);
 					}
 				},
 				Computer::Ground => {
@@ -174,10 +191,17 @@ pub fn auto_connect(server: &Shared) -> impl Future<Output = io::Result<()>> {
 					}
 
 					if ground.is_none() {
-						*ground = Some(FlightComputer {
+						let mut new_ground = FlightComputer {
 							stream,
 							database: database.clone(),
-						});
+						};
+
+						if let Err(error) = new_ground.update().await {
+							warn!("Failed to send comprehensive update to new flight: {error}");
+							continue;
+						}
+
+						*ground = Some(new_ground);
 					}
 				},
 			};
