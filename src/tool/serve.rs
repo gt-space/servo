@@ -1,5 +1,5 @@
 use clap::ArgMatches;
-use crate::{interface, server::{FlightComputer, Server}};
+use crate::{interface, server::{flight, Server}};
 use std::path::Path;
 
 /// Performs the necessary setup to connect to the servo server.
@@ -26,7 +26,7 @@ pub fn serve(servo_dir: &Path, args: &ArgMatches) -> anyhow::Result<()> {
 		.build()
 		.unwrap()
 		.block_on(async move {
-			tokio::spawn(FlightComputer::auto_connect(&server.shared));
+			tokio::spawn(flight::auto_connect(&server.shared));
 			tokio::spawn(server.shared.database.log_vehicle_state(&server.shared));
 
 			if !quiet {

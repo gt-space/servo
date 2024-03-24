@@ -1,6 +1,11 @@
-mod database;
-mod error;
-mod flight;
+/// Server database components.
+pub mod database;
+
+/// Server error components.
+pub mod error;
+
+/// Flight-related components such as the `FlightComputer` struct.
+pub mod flight;
 
 /// All server API route functions.
 pub mod routes;

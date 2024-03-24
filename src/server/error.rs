@@ -28,15 +28,17 @@ impl IntoResponse for ServerError {
 /// A `Result` type containing a `ServerError` as its `Err` variant.
 pub type ServerResult<T> = Result<T, ServerError>;
 
+/// Converts any arbitrary error type into a standardized `ServerError::Raw` for a bad request.
 pub fn bad_request(message: impl ToString) -> ServerError {
 	ServerError::Raw(message.to_string(), StatusCode::BAD_REQUEST)
 }
 
+/// Converts any arbitrary error type into a standardized `ServerError::Raw` when a resource is not found.
 pub fn not_found(message: impl ToString) -> ServerError {
 	ServerError::Raw(message.to_string(), StatusCode::NOT_FOUND)
 }
 
-/// Converts any arbitrary error type into a standardized `ServerError`.
+/// Converts any arbitrary error type into a standardized internal `ServerError`.
 pub fn internal(message: impl ToString) -> ServerError {
 	ServerError::Raw(message.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
 }
