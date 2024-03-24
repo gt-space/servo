@@ -27,6 +27,7 @@ pub fn serve(servo_dir: &Path, args: &ArgMatches) -> anyhow::Result<()> {
 		.unwrap()
 		.block_on(async move {
 			tokio::spawn(flight::auto_connect(&server.shared));
+			tokio::spawn(flight::receive_vehicle_state(&server.shared));
 			tokio::spawn(server.shared.database.log_vehicle_state(&server.shared));
 
 			if !quiet {
