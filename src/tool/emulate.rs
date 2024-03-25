@@ -48,6 +48,11 @@ pub fn emulate_sam(flight: SocketAddr) -> anyhow::Result<()> {
 
 	let board_id = "sam-01";
 
+
+	let identity = DataMessage::Identity(board_id.to_owned());
+	let handshake = postcard::to_slice(&identity, &mut buffer)?;
+	socket.send(handshake)?;
+
 	loop {
 		let message = DataMessage::Sam(board_id.to_owned(), Cow::Borrowed(&data_points));
 		let serialized = postcard::to_slice(&message, &mut buffer)?;
