@@ -5,7 +5,7 @@ use rusqlite::Connection as SqlConnection;
 use std::{future::Future, path::Path, sync::Arc};
 use tokio::sync::Mutex;
 
-use super::SharedState;
+use super::Shared;
 
 // include_dir is a separate library which evidently accesses files relative to
 // the project root, while include_str is a standard library macro which accesses
@@ -26,6 +26,13 @@ impl Database {
 	pub fn open(path: &Path) -> rusqlite::Result<Self> {
 		Ok(Database {
 			connection: Arc::new(Mutex::new(SqlConnection::open(path)?))
+		})
+	}
+
+	/// Opens a new `Database` in memory, so if it is closed, it's not saved.
+	pub fn volatile() -> rusqlite::Result<Self> {
+		Ok(Database {
+			connection: Arc::new(Mutex::new(SqlConnection::open_in_memory()?))
 		})
 	}
 
@@ -96,7 +103,7 @@ impl Database {
 	}
 
 	/// Continuously logs the vehicle state each time a new one arrives into the database.
-	pub fn log_vehicle_state(&self, shared: &SharedState) -> impl Future<Output = ()> {
+	pub fn log_vehicle_state(&self, shared: &Shared) -> impl Future<Output = ()> {
 		let vehicle_state = shared.vehicle.clone();
 		let connection = self.connection.clone();
 

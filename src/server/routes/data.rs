@@ -1,7 +1,7 @@
 use axum::{extract::{ws, ConnectInfo, State, WebSocketUpgrade}, http::header, response::{IntoResponse, Response}, Json};
 use common::comm::VehicleState;
 use futures_util::{SinkExt, StreamExt};
-use crate::server::{self, error::{bad_request, internal}, SharedState};
+use crate::server::{self, error::{bad_request, internal}, Shared};
 use jeflog::warn;
 use serde::{Deserialize, Serialize};
 use tokio::time::MissedTickBehavior;
@@ -17,7 +17,7 @@ pub struct ExportRequest {
 
 /// Route function which exports all vehicle data from the database into a specified format.
 pub async fn export(
-	State(shared): State<SharedState>,
+	State(shared): State<Shared>,
 	Json(request): Json<ExportRequest>,
 ) -> server::Result<impl IntoResponse> {
 	let database = shared.database
@@ -114,7 +114,7 @@ pub async fn export(
 /// Route function which accepts a WebSocket connection and begins forwarding vehicle state data.
 pub async fn forward_data(
 	ws: WebSocketUpgrade,
-	State(shared): State<SharedState>,
+	State(shared): State<Shared>,
 	ConnectInfo(peer): ConnectInfo<SocketAddr>,
 ) -> Response {
 	ws.on_upgrade(move |socket| async move {

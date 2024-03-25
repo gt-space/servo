@@ -3,10 +3,10 @@ use common::comm::Trigger;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
-use crate::server::{self, error::internal, SharedState};
+use crate::server::{self, error::internal, Shared};
 
 /// Route function which returns all existing triggers in the database.
-pub async fn get_triggers(State(shared): State<SharedState>) -> server::Result<Json<Vec<Trigger>>> {
+pub async fn get_triggers(State(shared): State<Shared>) -> server::Result<Json<Vec<Trigger>>> {
 	let database = shared.database
 		.connection
 		.lock()
@@ -31,7 +31,7 @@ pub async fn get_triggers(State(shared): State<SharedState>) -> server::Result<J
 }
 
 /// Route function which creates or updates a trigger in the database and on the flight computer.
-pub async fn set_trigger(State(shared): State<SharedState>, Json(request): Json<Trigger>) -> server::Result<()> {
+pub async fn set_trigger(State(shared): State<Shared>, Json(request): Json<Trigger>) -> server::Result<()> {
 	let database = shared.database
 		.connection
 		.lock()
@@ -73,7 +73,7 @@ pub struct DeleteTriggerRequest {
 }
 
 /// Route function which deletes a trigger from the database and sets it inactive on the flight computer.
-pub async fn delete_trigger(State(shared): State<SharedState>, Json(request): Json<DeleteTriggerRequest>) -> server::Result<()> {
+pub async fn delete_trigger(State(shared): State<Shared>, Json(request): Json<DeleteTriggerRequest>) -> server::Result<()> {
 	let database = shared.database
 		.connection
 		.lock()

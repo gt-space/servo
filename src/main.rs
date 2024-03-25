@@ -1,4 +1,4 @@
-use clap::{builder::PossibleValuesParser, Arg, Command};
+use clap::{builder::PossibleValuesParser, Arg, ArgAction, Command};
 use jeflog::fail;
 use servo::tool;
 use std::{env, fs, path::{Path, PathBuf}, process};
@@ -115,6 +115,17 @@ fn main() -> anyhow::Result<()> {
 		.subcommand(
 			Command::new("serve")
 				.about("Starts the servo server.")
+				.arg(
+					Arg::new("volatile")
+						.long("volatile")
+						.action(ArgAction::SetTrue)
+				)
+				.arg(
+					Arg::new("quiet")
+						.long("quiet")
+						.short('q')
+						.action(ArgAction::SetTrue)
+				)
 		)
 		.subcommand(
 			Command::new("sql")
@@ -148,7 +159,7 @@ fn main() -> anyhow::Result<()> {
 		},
 		Some(("locate", args)) => tool::locate(args)?,
 		Some(("run", args)) => tool::run(args.get_one::<String>("path").unwrap())?,
-		Some(("serve", _)) => tool::serve(&servo_dir)?,
+		Some(("serve", args)) => tool::serve(&servo_dir, args)?,
 		Some(("sql", args)) => tool::sql(args.get_one::<String>("raw_sql").unwrap())?,
 		Some(("upload", args)) => tool::upload(args.get_one::<PathBuf>("sequence_path").unwrap())?,
 		_ => {
