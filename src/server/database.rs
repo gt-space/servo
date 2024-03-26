@@ -1,21 +1,24 @@
 use anyhow::anyhow;
-use crate::flight::FlightComputer;
 use include_dir::{include_dir, Dir};
+use jeflog::warn;
 use rusqlite::Connection as SqlConnection;
-use std::{sync::Arc, future::Future, path::Path};
+use std::{future::Future, path::Path, sync::Arc};
 use tokio::sync::Mutex;
+
+use super::Shared;
 
 // include_dir is a separate library which evidently accesses files relative to
 // the project root, while include_str is a standard library macro which accesses
 // relative to the current file. why the difference? who knows.
 const MIGRATIONS: Dir = include_dir!("./src/migrations");
-const BOOTSTRAP_QUERY: &'static str = include_str!("./migrations/bootstrap.sql");
+const BOOTSTRAP_QUERY: &'static str = include_str!("../migrations/bootstrap.sql");
 
 /// A convenience type representing a `rusqlite::Connection` that may be passed to multiple async
 /// contexts at once.
 #[derive(Clone, Debug)]
 pub struct Database {
-	connection: Arc<Mutex<SqlConnection>>
+	/// The raw SQL connection, wrapped in an `Arc` and `Mutex` for thread safety.
+	pub connection: Arc<Mutex<SqlConnection>>
 }
 
 impl Database {
@@ -26,9 +29,11 @@ impl Database {
 		})
 	}
 
-	/// Getter method which returns a reference to the enclosed conneciton.
-	pub fn connection(&self) -> &Arc<Mutex<SqlConnection>> {
-		&self.connection
+	/// Opens a new `Database` in memory, so if it is closed, it's not saved.
+	pub fn volatile() -> rusqlite::Result<Self> {
+		Ok(Database {
+			connection: Arc::new(Mutex::new(SqlConnection::open_in_memory()?))
+		})
 	}
 
 	/// Migrates the database to the latest available migration version.
@@ -58,12 +63,17 @@ impl Database {
 	/// Migrates the database to a specific migration index.
 	pub fn migrate_to(&self, target_migration: i32) -> anyhow::Result<()> {
 		let connection = self.connection.blocking_lock();
-	
+
 		// the bootstrap query ensures that migration is set up
 		// and changes nothing if it is already set up
 		connection.execute_batch(BOOTSTRAP_QUERY)?;
 
-		let current_migration = connection.query_row("SELECT MAX(migration_id) FROM Migrations", [], |row| Ok(row.get::<_, i32>(0)?))?;
+		let current_migration = connection
+			.query_row(
+				"SELECT MAX(migration_id) FROM Migrations",
+				[],
+				|row| row.get::<_, i32>(0)
+			)?;
 	
 		if current_migration < target_migration {
 			for migration in current_migration + 1..=target_migration {
@@ -92,30 +102,33 @@ impl Database {
 		Ok(())
 	}
 
-	/// Continuously logs the vehicle state every time it is notified as having changed.
-	pub fn log_vehicle_state(&self, flight_computer: &FlightComputer) -> impl Future<Output = ()> {
-		let connection = Arc::downgrade(&self.connection);
-		let vehicle_state = flight_computer.vehicle_state();
+	/// Continuously logs the vehicle state each time a new one arrives into the database.
+	pub fn log_vehicle_state(&self, shared: &Shared) -> impl Future<Output = ()> {
+		let vehicle_state = shared.vehicle.clone();
+		let connection = self.connection.clone();
 
 		async move {
+			let mut buffer = [0_u8; 10_000];
+
 			loop {
 				vehicle_state.1.notified().await;
+				let vehicle_state = vehicle_state.0.lock().await.clone();
 
-				if let Some(connection) = connection.upgrade() {
-					let vehicle_state = vehicle_state.0
+				match postcard::to_slice(&vehicle_state, &mut buffer) {
+					Ok(serialized) => {
+						let query_result = connection
 						.lock()
-						.await;
+						.await
+						.execute("INSERT INTO VehicleSnapshots (vehicle_state) VALUES (?1)", [serialized.as_ref()]);
 
-					if let Ok(serialized) = postcard::to_allocvec(&*vehicle_state) {
-						connection
-							.lock()
-							.await
-							.execute("INSERT INTO VehicleSnapshots (vehicle_state) VALUES (?1)", [serialized])
-							.expect("failed to write vehicle state to database");
-					}
-				} else {
-					break;
-				}
+						if let Err(error) = query_result {
+							warn!("Failed to insert vehicle state into database: {error}");
+						}
+					},
+					Err(error) => {
+						warn!("Failed to serialize vehicle state into Postcard: {error}");
+					},
+				};
 			}
 		}
 	}

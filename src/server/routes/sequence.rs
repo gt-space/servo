@@ -1,8 +1,9 @@
-use actix_web::{web::{Data, Json}, HttpResponse};
+use axum::{extract::State, Json};
 use common::comm::Sequence;
-use crate::{Database, flight::FlightComputer, error::{bad_request, internal}};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
+
+use crate::server::{self, error::{bad_request, internal}, Shared};
 
 /// Used in sequences response struct to attach the configuration ID.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -25,10 +26,11 @@ pub struct RetrieveSequenceResponse {
 }
 
 /// Route function to retrieve all sequences from the database.
-pub async fn retrieve_sequences(database: Data<Database>) -> actix_web::Result<Json<RetrieveSequenceResponse>> {
-	let database = database.connection().lock().await;
-
-	let sequences = database
+pub async fn retrieve_sequences(State(shared): State<Shared>) -> server::Result<Json<RetrieveSequenceResponse>> {
+	let sequences = shared.database
+		.connection
+		.lock()
+		.await
 		.prepare("SELECT name, script, configuration_id FROM Sequences")
 		.map_err(internal)?
 		.query_map([], |row| {
@@ -60,9 +62,9 @@ pub struct SaveSequenceRequest {
 
 /// A route function which saves a sequence without running it.
 pub async fn save_sequence(
-	database: Data<Database>,
-	request: Json<SaveSequenceRequest>,
-) -> actix_web::Result<HttpResponse> {
+	State(shared): State<Shared>,
+	Json(request): Json<SaveSequenceRequest>,
+) -> server::Result<()> {
 	let decoded_script = base64::decode(&request.script)
 		.map_err(bad_request)
 		.and_then(|bytes| {
@@ -70,8 +72,8 @@ pub async fn save_sequence(
 				.map_err(bad_request)
 		})?;
 
-	database
-		.connection()
+	shared.database
+		.connection
 		.lock()
 		.await
 		.execute(
@@ -80,7 +82,22 @@ pub async fn save_sequence(
 		)
 		.map_err(internal)?;
 
-	Ok(HttpResponse::Ok().finish())
+	// if the incoming sequence is the abort sequence, immediately send it over to
+	// flight to be saved, _not run_.
+	if request.name == "abort" {
+		if let Some(flight) = shared.flight.0.lock().await.as_mut() {
+			let sequence = Sequence {
+				name: request.name,
+				script: decoded_script,
+			};
+
+			flight.send_sequence(sequence)
+				.await
+				.map_err(internal)?;
+		}
+	}
+
+	Ok(())
 }
 
 /// Request struct to delete a sequence from the database.
@@ -92,17 +109,17 @@ pub struct DeleteSequenceRequest {
 
 /// Route function to delete a sequence from the database.
 pub async fn delete_sequence(
-	database: Data<Database>,
-	request: Json<DeleteSequenceRequest>,
-) -> actix_web::Result<HttpResponse> {
-	database
-		.connection()
+	State(shared): State<Shared>,
+	Json(request): Json<DeleteSequenceRequest>,
+) -> server::Result<()> {
+	shared.database
+		.connection
 		.lock()
 		.await
 		.execute("DELETE FROM Sequences WHERE text_id = ?1", [&request.name])
 		.map_err(bad_request)?;
 
-	Ok(HttpResponse::Ok().finish())
+	Ok(())
 }
 
 /// Request struct for running a sequence on the flight computer.
@@ -117,14 +134,13 @@ pub struct RunSequenceRequest {
 
 /// Route function which receives a sequence and sends it directly to the flight computer.
 pub async fn run_sequence(
-	database: Data<Database>,
-	flight_computer: Data<FlightComputer>,
-	request: Json<RunSequenceRequest>,
-) -> actix_web::Result<HttpResponse> {
+	State(shared): State<Shared>,
+	Json(request): Json<RunSequenceRequest>,
+) -> server::Result<()> {
 	// TODO: Add check for active configuration against the configuration_id in the database
 
-	let sequence = database
-		.connection()
+	let sequence = shared.database
+		.connection
 		.lock()
 		.await
 		.query_row("SELECT script FROM Sequences WHERE name = ?1", [&request.name], |row| {
@@ -135,10 +151,62 @@ pub async fn run_sequence(
 		})
 		.map_err(bad_request)?;
 
-	flight_computer
-		.send_sequence(sequence)
+	if let Some(flight) = shared.flight.0.lock().await.as_mut() {
+		// special case for abort sequence, because sending it over just saves it
+		// so we need to send an actual abort control message if we want to run it
+		if sequence.name == "abort" {
+			flight.abort()
+				.await
+				.map_err(internal)?;
+
+			return Ok(());
+		}
+
+		// otherwise, send the sequence as normal to the flight computer
+		flight.send_sequence(sequence)
+			.await
+			.map_err(internal)?;
+	} else {
+		return Err(internal("flight computer not connected"));
+	}
+
+	Ok(())
+}
+
+/// Request struct for stopping a sequence.
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+pub struct StopSequenceRequest {
+	/// Name of the sequence to be stopped.
+	pub name: String
+}
+
+/// Route function which instructs the flight computer to stop a sequence.
+pub async fn stop_sequence(
+	State(shared): State<Shared>,
+	Json(request): Json<StopSequenceRequest>,
+) -> server::Result<()> {
+	shared.flight.0
+		.lock()
+		.await
+		.as_mut()
+		.ok_or(internal("flight computer not connected"))?
+		.stop_sequence(request.name)
 		.await
 		.map_err(internal)?;
 
-	Ok(HttpResponse::Ok().finish())
+	Ok(())
+}
+
+/// Route function which instructs the flight computer to abort.
+pub async fn abort(State(shared): State<Shared>) -> server::Result<()> {
+	shared.flight.0
+		.lock()
+		.await
+		.as_mut()
+		.ok_or(internal("flight computer not connected"))?
+		.abort()
+		.await
+		.map_err(internal)?;
+
+	Ok(())
 }

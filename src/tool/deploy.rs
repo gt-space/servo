@@ -13,7 +13,7 @@ use std::{
 	time::Duration,
 };
 
-const SSH_PRIVATE_KEY: &'static str = include_str!("../../keys/id_ed25519");
+// const SSH_PRIVATE_KEY: &'static str = include_str!("../../keys/id_ed25519");
 const RUST_VERSION: &'static str = "1.76.0";
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -411,24 +411,24 @@ impl Target {
 	}
 }
 
-const DEFAULT_TARGETS: [Target; 8] = [
-	Target::new("sam-01", Repository::Sam, Platform::Beaglebone),
-	Target::new("sam-02", Repository::Sam, Platform::Beaglebone),
-	Target::new("sam-03", Repository::Sam, Platform::Beaglebone),
-	Target::new("server-01", Repository::Servo, Platform::Meerkat),
-	Target::new("server-02", Repository::Servo, Platform::Meerkat),
-	Target::new("flight-01", Repository::Flight, Platform::Beaglebone),
-	Target::new("ground-01", Repository::Flight, Platform::Beaglebone),
-	Target::new("gui-01", Repository::Gui, Platform::Meerkat),
-];
+// const DEFAULT_TARGETS: [Target; 8] = [
+// 	Target::new("sam-01", Repository::Sam, Platform::Beaglebone),
+// 	Target::new("sam-02", Repository::Sam, Platform::Beaglebone),
+// 	Target::new("sam-03", Repository::Sam, Platform::Beaglebone),
+// 	Target::new("server-01", Repository::Servo, Platform::Meerkat),
+// 	Target::new("server-02", Repository::Servo, Platform::Meerkat),
+// 	Target::new("flight-01", Repository::Flight, Platform::Beaglebone),
+// 	Target::new("ground-01", Repository::Flight, Platform::Beaglebone),
+// 	Target::new("gui-01", Repository::Gui, Platform::Meerkat),
+// ];
 
 /// Compiles and deploys MCFS binaries to respective machines.
 /// 
 pub fn deploy(args: &ArgMatches) {
 	let prepare = *args.get_one::<bool>("prepare").unwrap();
 	let offline = *args.get_one::<bool>("offline").unwrap();
-	let target = args.get_one::<String>("to");
-	let path = args.get_one::<String>("path");
+	// let target = args.get_one::<String>("to");
+	// let path = args.get_one::<String>("path");
 
 	if prepare && offline {
 		fail!("Cannot prepare for deployment while offline.");
@@ -445,9 +445,27 @@ pub fn deploy(args: &ArgMatches) {
 
 	// TODO: Take into account --to flag
 	// let targets = DEFAULT_TARGETS;
-	let mut targets = vec![Target::new("jeffs-macbook-pro", Repository::Servo, Platform::AppleSilicon)];
+	let targets = vec![
+		Target::new("jeffs-macbook-pro", Repository::Servo, Platform::AppleSilicon),
+		Target::new("sam-01", Repository::Sam, Platform::Beaglebone),
+		Target::new("sam-02", Repository::Sam, Platform::Beaglebone),
+		Target::new("sam-03", Repository::Sam, Platform::Beaglebone),
+		Target::new("sam-04", Repository::Sam, Platform::Beaglebone),
+		Target::new("sam-05", Repository::Sam, Platform::Beaglebone),
+		Target::new("sam-06", Repository::Sam, Platform::Beaglebone),
+		Target::new("gui-01", Repository::Gui, Platform::Meerkat),
+		Target::new("gui-02", Repository::Gui, Platform::Meerkat),
+		Target::new("gui-03", Repository::Gui, Platform::Meerkat),
+		Target::new("gui-04", Repository::Gui, Platform::Meerkat),
+		Target::new("gui-05", Repository::Gui, Platform::Meerkat),
+		Target::new("server-01", Repository::Servo, Platform::Meerkat),
+		Target::new("server-02", Repository::Servo, Platform::Meerkat),
+		Target::new("ahrs", Repository::Ahrs, Platform::Beaglebone),
+		Target::new("flight-01", Repository::Flight, Platform::Beaglebone),
+		Target::new("flight-02", Repository::Flight, Platform::Beaglebone),
+	];
 
-	let mut repositories = Vec::new();
+	let mut repositories = Repository::all();
 
 	for target in &targets {
 		if !repositories.contains(&target.repository) {
@@ -455,25 +473,25 @@ pub fn deploy(args: &ArgMatches) {
 		}
 	}
 
-	// for repo in repositories {
-	// 	task!("Fetching and caching latest version of \x1b[1m{repo}\x1b[0m.");
+	for repo in repositories {
+		task!("Fetching and caching latest version of \x1b[1m{repo}\x1b[0m.");
 		
-	// 	if repo.fetch_latest(&cache) { // succeeded
-	// 		pass!("Fetched and cached latest version of \x1b[1m{repo}\x1b[0m.");
-	// 	} else { // failed
-	// 		fail!("Failed to fetch latest version of \x1b[1m{repo}\x1b[0m.");
-	// 		continue;
-	// 	}
+		if repo.fetch_latest(&cache) { // succeeded
+			pass!("Fetched and cached latest version of \x1b[1m{repo}\x1b[0m.");
+		} else { // failed
+			fail!("Failed to fetch latest version of \x1b[1m{repo}\x1b[0m.");
+			continue;
+		}
 
-	// 	task!("Bundling and compressing \x1b[1m{repo}\x1b[0m into a tarball.");
+		task!("Bundling and compressing \x1b[1m{repo}\x1b[0m into a tarball.");
 
-	// 	if repo.bundle(&cache) {
-	// 		pass!("Bundled and compressed \x1b[1m{repo}\x1b[0m into a tarball.");
-	// 	} else {
-	// 		fail!("Failed to bundle and compress \x1b[1m{repo}\x1b[0m into a tarball.");
-	// 		continue;
-	// 	}
-	// }
+		if repo.bundle(&cache) {
+			pass!("Bundled and compressed \x1b[1m{repo}\x1b[0m into a tarball.");
+		} else {
+			fail!("Failed to bundle and compress \x1b[1m{repo}\x1b[0m into a tarball.");
+			continue;
+		}
+	}
 
 	for mut target in targets {
 		target.connect();

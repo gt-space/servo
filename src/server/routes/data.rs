@@ -1,19 +1,12 @@
-use actix_web::{error, HttpResponse, Result, web::{Data, Json}};
-use common::comm::{ValveState, VehicleState};
-use crate::{Database, forwarding::ForwardingAgent};
-use crate::error::internal;
-use hdf5;
-use hdf5::{Group, Dataset, DatasetBuilder}; // Does not include File to avoid overlaps
-use std::sync::atomic::{AtomicU32, Ordering};
+use axum::{extract::{ws, ConnectInfo, State, WebSocketUpgrade}, http::header, response::{IntoResponse, Response}, Json};
+use common::comm::VehicleState;
+use crate::server::{self, error::{bad_request, internal}, Shared};
+use futures_util::{SinkExt, StreamExt};
+use hdf5::DatasetBuilder;
+use jeflog::warn;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, sync::Arc};
-use std::path::Path;
-
-
-/// Starts a stream over HTTP that forwards vehicle state at regular intervals
-pub async fn forward(forwarding_agent: Data<Arc<ForwardingAgent>>) -> HttpResponse {
-	HttpResponse::Ok().streaming(forwarding_agent.stream())
-}
+use tokio::{fs, time::MissedTickBehavior};
+use std::{collections::HashSet, net::SocketAddr, path::Path, sync::atomic::{AtomicU32, Ordering}, time::Duration};
 
 /// Request struct for export requests.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -25,37 +18,36 @@ pub struct ExportRequest {
 
 // An integer used to create unique filenames for exports in case two exports overlap in time
 // Atomic to be safe
-static EXPORT_FILE_INDEX_ATOMIC : AtomicU32 = AtomicU32::new(0);
+static EXPORT_FILE_INDEX_ATOMIC: AtomicU32 = AtomicU32::new(0);
 
-#[cfg_attr(not(debug_assertions), no_panic::no_panic)]
-#[inline(never)]
 /// A function that creates an HDF5 file at a given path containing the timestamps, sensor, and valve values as specified in sensor_names and valve_names in each vehicle state
-pub fn make_hdf5_file(sensor_names : &[std::string::String], valve_names : &[std::string::String], vehicle_states : &[(f64, VehicleState)], path : &Path) -> hdf5::Result<()>{
+pub fn make_hdf5_file(sensor_names: &[String], valve_names: &[String], vehicle_states: &[(f64, VehicleState)], path: &Path) -> hdf5::Result<()>{
 	// Create the HDF5 file
-	let file : hdf5::File = hdf5::File::create(path)?;
+	let file = hdf5::File::create(path)?;
 	
 	// Create the organizational groups
-	let reading_metadata_group : Group = file.create_group("metadata")?;
-	let valve_state_ids_group : Group = reading_metadata_group.create_group("valve_state_ids")?;
+	let reading_metadata_group = file.create_group("metadata")?;
+	let valve_state_ids_group = reading_metadata_group.create_group("valve_state_ids")?;
 	
 	
-	let sensors_group : Group = file.create_group("sensors")?;
-	let valves_group : Group = file.create_group("valves")?;
+	let sensors_group = file.create_group("sensors")?;
+	let valves_group = file.create_group("valves")?;
 	
 	// Initialize with the size of the vehicle state vector, since we'll have equal count of them
-	let mut timestamps_vec : Vec<f64> = Vec::<f64>::with_capacity(vehicle_states.len());
+	let mut timestamps_vec = Vec::with_capacity(vehicle_states.len());
 	
 	// Turn timestamps into dataset
 	for (timestamp, _) in vehicle_states {
 		timestamps_vec.push(*timestamp);
 	}
-	let _  : Dataset = DatasetBuilder::new(&reading_metadata_group)
+
+	DatasetBuilder::new(&reading_metadata_group)
 		.with_data(&timestamps_vec)
 		.create("timestamps")?;
 		
 	for name in sensor_names {
-		let mut reading_vec : Vec<f64> = Vec::<f64>::with_capacity(vehicle_states.len());
-		let mut unit_vec : Vec<i8> = Vec::<i8>::with_capacity(vehicle_states.len());
+		let mut reading_vec = Vec::with_capacity(vehicle_states.len());
+		let mut unit_vec = Vec::with_capacity(vehicle_states.len());
 		
 		// Yes I know iterating through the vehicle states for every sensor / valve is dumb,
 		// but I'm avoiding storing the entirety of the vehicle state in memory twice, so each
@@ -66,7 +58,7 @@ pub fn make_hdf5_file(sensor_names : &[std::string::String], valve_names : &[std
 			match value {
 				Some(x) =>  { 
 					reading_vec.push(x.value);
-					let id : i8 = (x.unit as i8).try_into()?; // Should never panic unless absurd amounts of units are added
+					let id = (x.unit as i8).try_into()?; // Should never panic unless absurd amounts of units are added
 					unit_vec.push(id);
 					},
 				// Immature but nobody will see this and not realize it's garbage data.
@@ -80,28 +72,27 @@ pub fn make_hdf5_file(sensor_names : &[std::string::String], valve_names : &[std
 		let curr_sensor_group = sensors_group.create_group(name.as_str())?;
 		
 		// Make datasets
-		let _ : Dataset = curr_sensor_group.new_dataset_builder()
+		curr_sensor_group.new_dataset_builder()
 			.deflate(9)
 			.with_data(&reading_vec)
 			.create("readings")?;
 		
-		let _ : Dataset = curr_sensor_group.new_dataset_builder()
+		curr_sensor_group.new_dataset_builder()
 			.deflate(9)
 			.with_data(&unit_vec)
 			.create("units")?;
 	}
-	
-	
+
 	// A vector of all the possible ValveStates seen. Used to create the attributes that indicate what each value of ValveState means.
 	// Likely more efficient as a simple vector, since ValveState has few possible elements. Will check later.
 	// I was originally going to make this a single attribute in the metadata category, but you can't iterate through an enum, 
 	// so I'll talk to Jeff about making a possible ValveState iter to replace this.
-	let mut seen_valve_states = HashSet::<ValveState>::new();
+	let mut seen_valve_states = HashSet::new();
 	
 	// Will make all values of valves metadata later
 	for name in valve_names {
 		// A vector of all the values of the valve in each timeframe
-		let mut state_vec : Vec<i8> = Vec::<i8>::with_capacity(vehicle_states.len());
+		let mut state_vec = Vec::with_capacity(vehicle_states.len());
 		
 		// Yes I know iterating through the vehicle states for every sensor / valve is dumb,
 		// but I'm avoiding storing the entirety of the vehicle state in memory twice, so each
@@ -110,20 +101,25 @@ pub fn make_hdf5_file(sensor_names : &[std::string::String], valve_names : &[std
 			let valve_state = state.valve_states.get(name);
 			// Put in bad data if nothing is found
 			match valve_state {
-				Some(x) => {
-					if !seen_valve_states.contains(x) { // Keep track of seen valve states
-						seen_valve_states.insert(x.clone());
+				Some(state) => {
+					let commanded = state.commanded;
+
+					if !seen_valve_states.contains(&commanded) { // Keep track of seen valve states
+						seen_valve_states.insert(commanded.clone());
 					}
-					state_vec.push((*x as i8).try_into()?)
-					},
+
+					state_vec.push(commanded as u8);
+
+					// state_vec.push((*x as i8).try_into()?)
+				},
 				// Immature but nobody will see this and not realize it's garbage data.
 				// Might replace with an infinity or something, will go over with Jeff.
-				None => state_vec.push(-69),
+				None => state_vec.push(69),
 			};
 		}
 		
 		// Make dataset
-		let _  : Dataset = valves_group.new_dataset_builder()
+		valves_group.new_dataset_builder()
 			.deflate(9)
 			.with_data(&state_vec)
 			.create(name.as_str())?;
@@ -133,26 +129,31 @@ pub fn make_hdf5_file(sensor_names : &[std::string::String], valve_names : &[std
 	// TLDR; it's an enum of attributes on a folder
 	for state in seen_valve_states {
 		let attr = valve_state_ids_group.new_attr::<i8>().shape(1).create(state.to_string().as_str())?;
-		let id : i8 = (state as i8).try_into()?;
-		let _ = attr.write(&[id]);
+		let id = state as u8;
+		if let Err(error) = attr.write(&[id]) {
+			warn!("Failed to write HDF5 attribute: {error}");
+		}
 	}
 	
 	// Close the file
-	let _ = file.close()?;
+	file.close()?;
 	
 	Ok(())
 }
 
 /// Route function which exports all vehicle data from the database into a specified format.
 pub async fn export(
-	database: Data<Database>,
-	request: Json<ExportRequest>,
-) -> Result<HttpResponse> {
-	let database = database.connection().lock().await;
+	State(shared): State<Shared>,
+	Json(request): Json<ExportRequest>,
+) -> server::Result<impl IntoResponse> {
+	let database = shared.database
+		.connection
+		.lock()
+		.await;
 
 	let vehicle_states = database
 		.prepare("SELECT recorded_at, vehicle_state FROM VehicleSnapshots WHERE recorded_at >= ?1 AND recorded_at <= ?2")
-		.map_err(|error| error::ErrorInternalServerError(error.to_string()))?
+		.map_err(internal)?
 		.query_map([request.from, request.to], |row| {
 			let vehicle_state = postcard::from_bytes::<VehicleState>(&row.get::<_, Vec<u8>>(1)?)
 				.map_err(|error| rusqlite::Error::FromSqlConversionFailure(1, rusqlite::types::Type::Blob, Box::new(error)))?;
@@ -160,7 +161,7 @@ pub async fn export(
 			Ok((row.get::<_, f64>(0)?, vehicle_state))
 		})
 		.and_then(|iter| iter.collect::<Result<Vec<_>, rusqlite::Error>>())
-		.map_err(|error| error::ErrorInternalServerError(error.to_string()))?;
+		.map_err(internal)?;
 
 	match request.format.as_str() {
 		"csv" => {
@@ -222,18 +223,15 @@ pub async fn export(
 
 					// see comment in sensor readings above.
 					if let Some(valve_state) = valve_state {
-						content += &valve_state.to_string();
+						content += &valve_state.actual.to_string();
 					}
 				}
 
 				content += "\n";
 			}
 
-			Ok(
-				HttpResponse::Ok()
-					.content_type("text/csv")
-					.body(content)
-			)
+			let headers = [(header::CONTENT_TYPE, "text/csv; charset=utf-8")];
+			Ok((headers, content.into_response()))
 		},
 		"hdf5" => {
 			// Generally a modified version of the csv export section
@@ -277,20 +275,20 @@ pub async fn export(
 			#[cfg(target_family = "unix")]
 			let temp = &std::env::var("HOME");
 
-			let home_path : &Path;
+			let home_path;
 			match temp {
-				Ok(x) => home_path = &Path::new(x),
-				_ => return Err(error::ErrorInternalServerError(String::from("Could not get home path"))),
+				Ok(x) => home_path = Path::new(x),
+				_ => return Err(internal("Could not get home path")),
 			}
 
-			let servo_dir : &Path = &Path::new(home_path).join(".servo");
+			let servo_dir = Path::new(home_path).join(".servo");
 			
 			// Get unique file index
-			let file_index : String = EXPORT_FILE_INDEX_ATOMIC.fetch_add(1, Ordering::Relaxed).to_string();
+			let file_index = EXPORT_FILE_INDEX_ATOMIC.fetch_add(1, Ordering::Relaxed).to_string();
 			
 			// Uneccessary since main should already make it
 			if !servo_dir.is_dir() {
-				return Err(error::ErrorInternalServerError(String::from("Could not get .servo path")));
+				return Err(internal(String::from("Could not get .servo path")));
 			}
 
 			// Prob can convert to just being str code. Will check later.
@@ -299,33 +297,88 @@ pub async fn export(
 			make_hdf5_file(&sensor_names, &valve_names, &vehicle_states, &path)
 				.map_err(internal)?;
 
-			let temp = std::fs::read(&path)
+			let content = fs::read(&path).await
 				.map_err(internal)?;
-			let content : actix_web::web::Bytes = actix_web::web::Bytes::from(temp);
 
 			// remove file to free up space
-			let _ = std::fs::remove_file(path);
+			if let Err(error) = std::fs::remove_file(&path) {
+				warn!("Failed to remove temporary HDF5 file at {path:?}: {error}");
+			}
 
-			Ok(
-				HttpResponse::Ok()
-					.content_type("file/hdf5")
-					.body(content)
-			)
+			let headers = [(header::CONTENT_TYPE, "application/x-hdf")];
+			Ok((headers, content.into_response()))
 		},
-		_ => Err(error::ErrorBadRequest("invalid export format")),
+		_ => Err(bad_request("invalid export format")),
 	}
+}
+
+/// Route function which accepts a WebSocket connection and begins forwarding vehicle state data.
+pub async fn forward_data(
+	ws: WebSocketUpgrade,
+	State(shared): State<Shared>,
+	ConnectInfo(peer): ConnectInfo<SocketAddr>,
+) -> Response {
+	ws.on_upgrade(move |socket| async move {
+		let vehicle = shared.vehicle.clone();
+		let (mut writer, mut reader) = socket.split();
+
+		// spawn separate task for forwarding while the "main" task waits
+		// until it can abort this task when the user wants to close
+		let forwarding_handle = tokio::spawn(async move {
+			let (vehicle_state, _) = vehicle.as_ref();
+
+			// setup forwarding agent to send vehicle state every 100ms (10Hz)
+			let mut interval = tokio::time::interval(Duration::from_millis(100));
+			interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+			loop {
+				let vehicle_state = vehicle_state
+					.lock()
+					.await
+					.clone();
+
+				// serialize vehicle state into JSON so it is easily digestible by the GUI.
+				// vehicle state comes in as postcard and gets reserialized here. overhead isn't bad.
+				let json = match serde_json::to_string(&vehicle_state) {
+					Ok(json) => json,
+					Err(error) => {
+						warn!("Failed to serialize vehicle state into JSON: {error}");
+						continue;
+					},
+				};
+
+				// drop vehicle state before sending to prevent unecessarily holding lock
+				drop(vehicle_state);
+
+				// attempt to forward vehicle state and break if connection is severed.
+				if let Err(_error) = writer.send(ws::Message::Text(json)).await {
+					warn!("Forwarding connection with peer \x1b[1m{}\x1b[0m severed.", peer);
+					_ = writer.close().await;
+					break;
+				}
+
+				// wait for 100ms to retransmit vehicle state
+				interval.tick().await;
+			}
+		});
+
+		// wait until reader from socket receives a ws::Message::Close or a None,
+		// indicating that the stream is no longer readable
+		while !matches!(reader.next().await, Some(Ok(ws::Message::Close(_))) | None) {}
+
+		// cancel the forwarding stream upon receipt of a close message
+		forwarding_handle.abort();
+	})
 }
 
 #[cfg(test)]
 mod tests {
-	use rand::Rng;
-	use rand::prelude::*;
+	use common::comm::{CompositeValveState, Measurement, Unit, ValveState};
+	use rand::{Rng, RngCore};
 	use std::collections::HashMap;
-	use common::comm::Measurement;
-	use common::comm::Unit;
-	use std::time::Duration;
 	use super::*;
-    #[test]
+
+  #[test]
 	fn test_hdf5_file_creation() {
 		// Do the same test a few times just cause this does use RNG
 		for _ in 0..8 {
@@ -333,26 +386,29 @@ mod tests {
 			
 			let count = 64;
 
-			let mut vehicle_states = Vec::<(f64, VehicleState)>::with_capacity(count);
+			let mut vehicle_states = Vec::with_capacity(count);
 			
 			let mut rng = rand::thread_rng();
 			let mut time : f64 = 0.0;
 
-			let mut timestamps_vec : Vec<f64> = Vec::<f64>::with_capacity(count);
+			let mut timestamps_vec : Vec<f64> = Vec::with_capacity(count);
 			
-			let sensor_units  : [Unit; 4] = [Unit::Amps, Unit::Psi, Unit::Volts, Unit::Kelvin];
+			let sensor_units = [Unit::Amps, Unit::Psi, Unit::Volts, Unit::Kelvin];
 
-			let valve_names : [std::string::String; 4] = [std::string::String::from("V1"), std::string::String::from("V2"), std::string::String::from("V3"),std::string::String::from("V4")];
-			let mut valve_state_vecs : [Vec<i8>; 4] = [Vec::<i8>::with_capacity(count), Vec::<i8>::with_capacity(count), Vec::<i8>::with_capacity(count), Vec::<i8>::with_capacity(count)];
+			let valve_names = [String::from("V1"), String::from("V2"), String::from("V3"),String::from("V4")];
+			let mut valve_state_vecs = [Vec::with_capacity(count), Vec::with_capacity(count), Vec::with_capacity(count), Vec::with_capacity(count)];
 
-			let mut seen_valve_states : Vec<ValveState> = Vec::<ValveState>::with_capacity(10);
+			let mut seen_valve_states = Vec::with_capacity(10);
 
-			let sensor_names : [std::string::String; 4] = [std::string::String::from("S1"), std::string::String::from("S2"), std::string::String::from("S3"),std::string::String::from("S4")];
-			let mut sensor_state_vecs : [Vec<f64>; 4] = [Vec::<f64>::with_capacity(count), Vec::<f64>::with_capacity(count), Vec::<f64>::with_capacity(count), Vec::<f64>::with_capacity(count)];
-			let mut sensor_unit_vecs  : [Vec<i8>; 4] = [Vec::<i8>::with_capacity(count), Vec::<i8>::with_capacity(count), Vec::<i8>::with_capacity(count), Vec::<i8>::with_capacity(count)];
+			let sensor_names = [String::from("S1"), String::from("S2"), String::from("S3"),String::from("S4")];
+			let mut sensor_state_vecs = [Vec::with_capacity(count), Vec::with_capacity(count), Vec::with_capacity(count), Vec::with_capacity(count)];
+			let mut sensor_unit_vecs = [Vec::with_capacity(count), Vec::with_capacity(count), Vec::with_capacity(count), Vec::with_capacity(count)];
 			
 			for _ in 0..count {
-				let mut state = VehicleState { valve_states : HashMap::<String, ValveState>::new(), sensor_readings : HashMap::<String, Measurement>::new(), update_times : HashMap::<String, f64>::new() };
+				let mut state = VehicleState {
+					valve_states: HashMap::new(),
+					sensor_readings: HashMap::new(),
+				};
 				
 				for i in 0..4 {
 					if rng.next_u32() % 10 > 0 { // have some "empty" timeframes for a bit of data 
@@ -360,14 +416,21 @@ mod tests {
 							0 => ValveState::Disconnected,
 							1 => ValveState::Open,
 							2 => ValveState::Closed,
-							3 => ValveState::CommandedOpen,
-							4 => ValveState::CommandedClosed,
+							3 => ValveState::Fault,
+							4 => ValveState::Undetermined,
 							_ => ValveState::Disconnected,
 						};
+
 						if !seen_valve_states.contains(&valve_state_temp) {
 							seen_valve_states.push(valve_state_temp.clone());
 						}
-						state.valve_states.insert(valve_names[i].clone(), valve_state_temp.clone());
+
+						let composite = CompositeValveState {
+							commanded: valve_state_temp.clone(),
+							actual: ValveState::Undetermined,
+						};
+
+						state.valve_states.insert(valve_names[i].clone(), composite);
 						valve_state_vecs[i].push(valve_state_temp as i8);
 
 					} else {
@@ -390,7 +453,9 @@ mod tests {
 				timestamps_vec.push(time);
 				time += 0.1;
 			}
-			let make_result = make_hdf5_file(&sensor_names, &valve_names, &vehicle_states, path).expect("HDF5 should not error out when making this basic dataset");
+
+			make_hdf5_file(&sensor_names, &valve_names, &vehicle_states, path)
+				.expect("HDF5 should not error out when making this basic dataset");
 
 			let file = hdf5::File::open(path).expect("File should exist after make_hdf5_file runs, as make_hdf5_file literally makes"); // 
 

@@ -1,4 +1,4 @@
-use clap::{Command, Arg};
+use clap::{builder::PossibleValuesParser, Arg, ArgAction, Command};
 use jeflog::fail;
 use servo::tool;
 use std::{env, fs, path::{Path, PathBuf}, process};
@@ -54,6 +54,25 @@ fn main() -> anyhow::Result<()> {
 		.subcommand(
 			Command::new("emulate")
 				.about("Emulates a particular subsystem of the YJSP software stack.")
+				.arg(
+					Arg::new("component")
+						.required(true)
+						.ignore_case(true)
+						.value_parser(PossibleValuesParser::new(["flight", "sam"]))
+				)
+				.arg(
+					Arg::new("frequency")
+						.required(false)
+						.default_value("100.0")
+						.short('f')
+						.value_parser(clap::value_parser!(f64))
+				)
+				.arg(
+					Arg::new("duration")
+						.required(false)
+						.short('t')
+						.value_parser(clap::value_parser!(f64))
+				)
 		)
 		.subcommand(
 			Command::new("export")
@@ -77,6 +96,15 @@ fn main() -> anyhow::Result<()> {
 				)
 		)
 		.subcommand(
+			Command::new("locate")
+				.about("Locates the IP addresses of known hostnames on the network.")
+				.arg(
+					Arg::new("subsystem")
+						.required(false)
+						.value_parser(PossibleValuesParser::new(["gui", "servo", "flight", "sam"]))
+				)
+		)
+		.subcommand(
 			Command::new("run")
 				.about("Sends a Python sequence to be run on the flight computer.")
 				.arg(
@@ -87,6 +115,17 @@ fn main() -> anyhow::Result<()> {
 		.subcommand(
 			Command::new("serve")
 				.about("Starts the servo server.")
+				.arg(
+					Arg::new("volatile")
+						.long("volatile")
+						.action(ArgAction::SetTrue)
+				)
+				.arg(
+					Arg::new("quiet")
+						.long("quiet")
+						.short('q')
+						.action(ArgAction::SetTrue)
+				)
 		)
 		.subcommand(
 			Command::new("sql")
@@ -110,7 +149,7 @@ fn main() -> anyhow::Result<()> {
 	match matches.subcommand() {
 		Some(("clean", _)) => tool::clean(&servo_dir)?,
 		Some(("deploy", args)) => tool::deploy(args),
-		Some(("emulate", _)) => tool::emulate()?,
+		Some(("emulate", args)) => tool::emulate(args)?,
 		Some(("export", args)) => {
 			tool::export(
 				args.get_one::<f64>("from").copied(),
@@ -118,8 +157,9 @@ fn main() -> anyhow::Result<()> {
 				args.get_one::<String>("output_path").unwrap(),
 			)?;
 		},
+		Some(("locate", args)) => tool::locate(args)?,
 		Some(("run", args)) => tool::run(args.get_one::<String>("path").unwrap())?,
-		Some(("serve", _)) => tool::serve(&servo_dir)?,
+		Some(("serve", args)) => tool::serve(&servo_dir, args)?,
 		Some(("sql", args)) => tool::sql(args.get_one::<String>("raw_sql").unwrap())?,
 		Some(("upload", args)) => tool::upload(args.get_one::<PathBuf>("sequence_path").unwrap())?,
 		_ => {
