@@ -11,6 +11,7 @@ base64 = "0.13"
 clap = "4.4"
 common = { git = "https://github.com/gt-space/common", features = ["rusqlite"] }
 futures-util = "0.3.30"
+hdf5 = { git = "https://github.com/aldanor/hdf5-rust", features = ["static", "zlib"]}
 include_dir = "0.7"
 jeflog = "0.1"
 postcard = { version = "1.0", features = ["alloc"] }
