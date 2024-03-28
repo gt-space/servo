@@ -1,15 +1,22 @@
 use std::{fs, path::Path};
+use jeflog::fail;
 use serde_json::json;
 
 /// Tool function used to upload a sequence to be stored on the control server.
-pub fn upload(sequence_path: &Path) -> anyhow::Result<()> {
+pub fn upload(sequence_path: &Path) {
 	let name = sequence_path
 		.file_stem()
 		.expect("given path does not have a file stem")
 		.to_string_lossy()
 		.into_owned();
 
-	let script = base64::encode(fs::read(sequence_path)?);
+	let script = match fs::read(sequence_path) {
+		Ok(raw) => base64::encode(raw),
+		Err(error) => {
+			fail!("Failed to read script from path: {error}");
+			return;
+		},
+	};
 
 	let client = reqwest::blocking::Client::new();
 	let response = client.put("http://localhost:7200/operator/sequence")
@@ -17,9 +24,9 @@ pub fn upload(sequence_path: &Path) -> anyhow::Result<()> {
 			"name": name,
 			"script": script
 		}))
-		.send()?;
+		.send();
 
-	println!("{response:#?}");
-
- 	Ok(())
+	if let Err(error) = response {
+		fail!("Failed to send sequence update request: {error}");
+	}
 }

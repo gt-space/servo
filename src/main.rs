@@ -147,21 +147,21 @@ fn main() -> anyhow::Result<()> {
 		.get_matches();
 	
 	match matches.subcommand() {
-		Some(("clean", _)) => tool::clean(&servo_dir)?,
+		Some(("clean", _)) => tool::clean(&servo_dir),
 		Some(("deploy", args)) => tool::deploy(args),
-		Some(("emulate", args)) => tool::emulate(args)?,
+		Some(("emulate", args)) => tool::emulate(args),
 		Some(("export", args)) => {
 			tool::export(
 				args.get_one::<f64>("from").copied(),
 				args.get_one::<f64>("to").copied(),
 				args.get_one::<String>("output_path").unwrap(),
-			)?;
+			);
 		},
 		Some(("locate", args)) => tool::locate(args)?,
-		Some(("run", args)) => tool::run(args.get_one::<String>("path").unwrap())?,
-		Some(("serve", args)) => tool::serve(&servo_dir, args)?,
+		Some(("run", args)) => tool::run(args.get_one::<String>("path").unwrap()),
+		Some(("serve", args)) => tool::serve(&servo_dir, args),
 		Some(("sql", args)) => tool::sql(args.get_one::<String>("raw_sql").unwrap())?,
-		Some(("upload", args)) => tool::upload(args.get_one::<PathBuf>("sequence_path").unwrap())?,
+		Some(("upload", args)) => tool::upload(args.get_one::<PathBuf>("sequence_path").unwrap()),
 		_ => {
 			fail!("Invalid command. Please check the command you entered.");
 			process::exit(1);

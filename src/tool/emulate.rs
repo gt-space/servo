@@ -48,7 +48,6 @@ pub fn emulate_sam(flight: SocketAddr) -> anyhow::Result<()> {
 
 	let board_id = "sam-01";
 
-
 	let identity = DataMessage::Identity(board_id.to_owned());
 	let handshake = postcard::to_slice(&identity, &mut buffer)?;
 	socket.send(handshake)?;
@@ -64,15 +63,19 @@ pub fn emulate_sam(flight: SocketAddr) -> anyhow::Result<()> {
 }
 
 /// Tool function which emulates different components of the software stack.
-pub fn emulate(args: &ArgMatches) -> anyhow::Result<()> {
+pub fn emulate(args: &ArgMatches) {
 	let component = args.get_one::<String>("component").unwrap();
 
-	match component.as_str() {
+	let result = match component.as_str() {
 		"flight" => emulate_flight(),
-		"sam" => emulate_sam("localhost:4573".to_socket_addrs()?.find(|addr| addr.is_ipv4()).unwrap()),
+		"sam" => emulate_sam("localhost:4573".to_socket_addrs().unwrap().find(|addr| addr.is_ipv4()).unwrap()),
 		other => {
 			fail!("Unrecognized emulator component '{other}'.");
-			Ok(())
-		}
+			return;
+		},
+	};
+
+	if let Err(error) = result {
+		fail!("Failed to emulate \x1b[1m{component}\x1b[0m: {error}");
 	}
 }

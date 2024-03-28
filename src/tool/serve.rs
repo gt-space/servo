@@ -1,11 +1,12 @@
 use clap::ArgMatches;
+use jeflog::fail;
 use crate::{interface, server::{flight, Server}};
 use std::path::Path;
 
 /// Performs the necessary setup to connect to the servo server.
 /// This function initializes database connections, spawns background tasks,
 /// and starts the HTTP server to serve the application upon request.
-pub fn serve(servo_dir: &Path, args: &ArgMatches) -> anyhow::Result<()> {
+pub fn serve(servo_dir: &Path, args: &ArgMatches){
 	let volatile = args.get_one::<bool>("volatile")
 		.copied()
 		.unwrap_or(false);
@@ -14,13 +15,21 @@ pub fn serve(servo_dir: &Path, args: &ArgMatches) -> anyhow::Result<()> {
 		.copied()
 		.unwrap_or(false);
 
-
 	let database_path = servo_dir.join("database.sqlite");
-	let server = Server::new((!volatile).then_some(&database_path))?;
+	let server = match Server::new((!volatile).then_some(&database_path)) {
+		Ok(server) => server,
+		Err(error) => {
+			fail!("Failed to construct server: {error}");
+			return;
+		},
+	};
 
-	server.shared.database.migrate()?;
+	if let Err(error) = server.shared.database.migrate() {
+		fail!("Failed to migrate database: {error}");
+		return;
+	}
 
-	tokio::runtime::Builder::new_multi_thread()
+	let server_result = tokio::runtime::Builder::new_multi_thread()
 		.worker_threads(10)
 		.enable_all()
 		.build()
@@ -35,7 +44,9 @@ pub fn serve(servo_dir: &Path, args: &ArgMatches) -> anyhow::Result<()> {
 			}
 
 			server.serve().await
-		})?;
+		});
 
-	Ok(())
+	if let Err(error) = server_result {
+		fail!("Server crashed: {error}");
+	}
 }

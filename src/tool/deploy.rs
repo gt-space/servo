@@ -1,17 +1,8 @@
+use anyhow::anyhow;
 use clap::ArgMatches;
+use crate::{cache_path, Cache};
 use jeflog::{fail, pass, task, warn};
-use ssh2::Session as SshSession;
-
-use std::{
-	env,
-	fmt,
-	fs,
-	io::{Read, Write},
-	net::{TcpStream, ToSocketAddrs},
-	path::{Path, PathBuf},
-	process,
-	time::Duration,
-};
+use std::{fmt, process};
 
 // const SSH_PRIVATE_KEY: &'static str = include_str!("../../keys/id_ed25519");
 const RUST_VERSION: &'static str = "1.76.0";
@@ -53,108 +44,93 @@ enum Repository {
 impl Repository {
 	pub fn all() -> Vec<Self> {
 		vec![
-			Repository::Servo,
-			Repository::Flight,
 			Repository::Ahrs,
+			Repository::Flight,
 			Repository::Gui,
 			Repository::Sam,
+			Repository::Servo,
 		]
 	}
 
 	pub fn remote(self) -> &'static str {
 		match self {
-			Self::Ahrs => "git@github-research.gatech.edu:YJSP/ahrs",
-			Self::Flight => "git@github-research.gatech.edu:YJSP/flight",
-			Self::Gui => "git@github-research.gatech.edu:YJSP/fs-gui",
-			Self::Sam => "git@github-research.gatech.edu:YJSP/fs-sam-software",
-			Self::Servo => "git@github-research.gatech.edu:YJSP/servo",
+			Self::Ahrs => "https://github.com/gt-space/ahrs",
+			Self::Flight => "https://github.com/gt-space/flight",
+			Self::Gui => "https://github.com/gt-space/gui",
+			Self::Sam => "https://github.com/gt-space/sam",
+			Self::Servo => "https://github.com/gt-space/servo",
 		}
 	}
 
-	/// Fetches the latest version of the repository.
-	/// 
-	/// If there is an existing cache of the repo, then it will pull the latest changes from GitHub.
-	/// If no cache exists yet, it will create one by cloning the remote repo.
-	pub fn fetch_latest(self, cache: &Path) -> bool {
+	pub fn fetch(self) -> anyhow::Result<()> {
+		let repo_cache = cache_path().join(self.to_string());
+
 		task!("Locating local cache of \x1b[1m{self}\x1b[0m.");
 
-		let repo_cache = cache.join(self.to_string());
+		if repo_cache.is_dir() {
+			pass!("Using local cache at \x1b[1m{}\x1b[0m.", repo_cache.to_string_lossy());
+			task!("Fetching latest version of branch \x1b[1mmain\x1b[0m.");
 
-		if repo_cache.exists() {
-			pass!("Using local cache found at \x1b[1m{}\x1b[0m.", repo_cache.to_string_lossy());
-			task!("Pulling latest version of branch \x1b[1mmain\x1b[0m from GitHub.");
+			let fetch = process::Command::new("git")
+				.args(["-C", &repo_cache.to_string_lossy(), "fetch"])
+				.output();
 
-			let pull = process::Command::new("git")
-				.args(["-C", &repo_cache.to_string_lossy(), "pull"])
-				.output()
-				.unwrap(); // TODO: remove
-
-			if pull.status.success() {
-				pass!("Pulled latest version of \x1b[1mmain\x1b[0m from GitHub.");
+			if fetch.is_ok() {
+				pass!("Fetched latest version of branch \x1b[1mmain\x1b[0m.");
 			} else {
-				fail!("Pulling from GitHub failed: {}", String::from_utf8_lossy(&pull.stderr));
-				return false;
+				// TODO: add print of remote URL
+				warn!("Failed to fetch \x1b[1mmain\x1b[0m from remote. Falling back on cached version.");
 			}
 		} else {
-			warn!("Did not find an existing local cache.");
-
+			warn!("Did not find existing local cache.");
+			
 			let remote = self.remote();
 			task!("Cloning remote repository at \x1b[1m{remote}\x1b[0m.");
 
 			let clone = process::Command::new("git")
 				.args(["clone", remote, &repo_cache.to_string_lossy()])
-				.output()
-				.unwrap(); // TODO: remove
-				// .map_err(|error| anyhow!("Failed to clone repository at \x1b[1m{remote}\x1b[0m: {error}"))?;
+				.output();
 
-			if clone.status.success() {
-				pass!("Cloned remote repository at \x1b[1m{remote}\x1b[0m.");
-			} else {
-				fail!("Failed to clone remote repository at \x1b[1m{remote}\x1b[0m: {}", String::from_utf8_lossy(&clone.stderr));
-				return false;
+			if let Err(error) = clone {
+				fail!("Failed to clone remote repository at \x1b[1m{remote}\x1b[0m.");
+				return Err(error.into());
 			}
+
+			pass!("Cloned remote repository at \x1b[1m{remote}\x1b[0m.");
 		}
 
-		true
+		Ok(())
 	}
 
-	/// Bundles the repository files 
-	pub fn bundle(self, cache: &Path) -> bool {
-		task!("Vendoring dependencies of repository \x1b[1m{self}\x1b[0m.");
+	pub fn compile_for(self, platform: Platform) -> anyhow::Result<()> {
+		if self != Repository::Sam {
+			return Err(anyhow!("repository not supported"));
+		}
 
-		let repo_path = cache.join(self.to_string());
-		let manifest_path = repo_path.join("Cargo.toml");
-		let vendor_path = repo_path.join("vendor");
+		let target = platform.triple();
 
-		let vendor = process::Command::new("cargo")
-			.args(["vendor", "--manifest-path", &manifest_path.to_string_lossy(), &vendor_path.to_string_lossy()])
+		let manifest_path = Cache::get()
+			.path
+			.join(self.to_string())
+			.join("Cargo.toml");
+
+		task!("Building \x1b[1m{self}\x1b[0m for target \x1b[1m{target}\x1b[0m.");
+
+		let build = process::Command::new("cargo")
+			.args(["build", "--release"])
+			.args(["--target", platform.triple()])
+			.args(["--manifest-path", &manifest_path.to_string_lossy()])
 			.output()
 			.unwrap();
 
-		if vendor.status.success() {
-			pass!("Vendored dependencies of repository \x1b[1m{self}\x1b[0m.");
-		} else {
-			fail!("Failed to vendor dependencies of repository \x1b[1m{self}\x1b[0m: {}", String::from_utf8_lossy(&vendor.stderr));
-			return false;
+		if !build.status.success() {
+			fail!("Failed to build \x1b[1m{self}\x1b[0m for target \x1b[1m{target}\x1b[0m.");
+			return Err(anyhow!(String::from_utf8(build.stderr).unwrap()));
 		}
 
-		task!("Compressing repository \x1b[1m{self}\x1b[0m into a tarball.");
+		pass!("Built \x1b[1m{self}\x1b[0m for target \x1b[1m{target}\x1b[0m.");
 
-		let tarball_path = cache.join(format!("{self}.tar.gz"));
-
-		let tar = process::Command::new("tar")
-			.args(["czf", &tarball_path.to_string_lossy(), "-C", &cache.to_string_lossy(), &format!("./{self}")])
-			.output()
-			.unwrap();
-
-		if tar.status.success() {
-			pass!("Compressed repository \x1b[1m{self}\x1b[0m into a tarball.");
-		} else {
-			fail!("Failed to compress repository \x1b[1m{self}\x1b[0m into a tarball.");
-			return false;
-		}
-
-		true
+		Ok(())
 	}
 }
 
@@ -170,246 +146,347 @@ impl fmt::Display for Repository {
 	}
 }
 
-pub fn locate_cache() -> anyhow::Result<PathBuf> {
-	task!("Locating cache directory.");
+// impl Repository {
+// 	pub fn all() -> Vec<Self> {
+// 		vec![
+// 			Repository::Servo,
+// 			Repository::Flight,
+// 			Repository::Ahrs,
+// 			Repository::Gui,
+// 			Repository::Sam,
+// 		]
+// 	}
 
-	let cache_path;
+// 	pub fn remote(self) -> &'static str {
+// 		match self {
+// 			Self::Ahrs => "https://github.com/gt-space/ahrs",
+// 			Self::Flight => "https://github.com/gt-space/flight",
+// 			Self::Gui => "https://github.com/gt-space/fs-gui",
+// 			Self::Sam => "https://github.com/gt-space/fs-sam-software",
+// 			Self::Servo => "https://github.com/gt-space/servo",
+// 		}
+// 	}
 
-	if cfg!(target_os = "macos") {
-		cache_path = PathBuf::from(env::var("HOME")?).join("Library/Caches/servo");
-	} else if cfg!(target_os = "windows") {
-		cache_path = PathBuf::from(env::var("LOCALAPPDATA")?).join("servo");
-		// cache_display_path = "%LOCALAPPDATA%\\servo";
-	} else {
-		cache_path = PathBuf::from("/var/cache/servo");
-	}
+// 	/// Fetches the latest version of the repository.
+// 	/// 
+// 	/// If there is an existing cache of the repo, then it will pull the latest changes from GitHub.
+// 	/// If no cache exists yet, it will create one by cloning the remote repo.
+// 	pub fn fetch_latest(self, cache: &Path) -> bool {
+// 		task!("Locating local cache of \x1b[1m{self}\x1b[0m.");
 
-	fs::create_dir_all(&cache_path)?;
-	pass!("Located cache at {}.", cache_path.to_string_lossy());
-	Ok(cache_path)
-}
+// 		let repo_cache = cache.join(self.to_string());
 
-struct Target {
-	hostname: &'static str,
-	repository: Repository,
-	platform: Platform,
+// 		if repo_cache.exists() {
+// 			pass!("Using local cache found at \x1b[1m{}\x1b[0m.", repo_cache.to_string_lossy());
+// 			task!("Pulling latest version of branch \x1b[1mmain\x1b[0m from GitHub.");
 
-	session: Option<SshSession>,
-}
+// 			let pull = process::Command::new("git")
+// 				.args(["-C", &repo_cache.to_string_lossy(), "pull"])
+// 				.output()
+// 				.unwrap(); // TODO: remove
 
-impl Target {
-	pub const fn new(hostname: &'static str, repository: Repository, platform: Platform) -> Self {
-		Target {
-			hostname,
-			repository,
-			platform,
-			session: None,
-		}
-	}
+// 			if pull.status.success() {
+// 				pass!("Pulled latest version of \x1b[1mmain\x1b[0m from GitHub.");
+// 			} else {
+// 				fail!("Pulling from GitHub failed: {}", String::from_utf8_lossy(&pull.stderr));
+// 				return false;
+// 			}
+// 		} else {
+// 			warn!("Did not find an existing local cache.");
 
-	pub fn connect(&mut self) -> bool {
-		task!("Locating target \x1b[1m{}\x1b[0m.", self.hostname);
+// 			let remote = self.remote();
+// 			task!("Cloning remote repository at \x1b[1m{remote}\x1b[0m.");
 
-		let address = format!("{}.local:22", self.hostname)
-			.to_socket_addrs()
-			.ok()
-			.and_then(|mut addrs| addrs.find(|addr| addr.is_ipv4()));
+// 			let clone = process::Command::new("git")
+// 				.args(["clone", remote, &repo_cache.to_string_lossy()])
+// 				.output()
+// 				.unwrap(); // TODO: remove
+// 				// .map_err(|error| anyhow!("Failed to clone repository at \x1b[1m{remote}\x1b[0m: {error}"))?;
 
-		let Some(address) = address else {
-			fail!("Target \x1b[1m{}\x1b[0m could not be located.", self.hostname);
-			return false;
-		};
+// 			if clone.status.success() {
+// 				pass!("Cloned remote repository at \x1b[1m{remote}\x1b[0m.");
+// 			} else {
+// 				fail!("Failed to clone remote repository at \x1b[1m{remote}\x1b[0m: {}", String::from_utf8_lossy(&clone.stderr));
+// 				return false;
+// 			}
+// 		}
 
-		pass!("Target \x1b[1m{}\x1b[0m located at \x1b[1m{}\x1b[0m.", self.hostname, address.ip());
-		task!("Establishing TCP connection with target.");
+// 		true
+// 	}
 
-		let Ok(socket) = TcpStream::connect_timeout(&address, Duration::from_millis(1000)) else {
-			fail!("Failed to establish a TCP connection with target.");
-			return false;
-		};
+// 	/// Bundles the repository files 
+// 	pub fn bundle(self, cache: &Path) -> bool {
+// 		task!("Vendoring dependencies of repository \x1b[1m{self}\x1b[0m.");
 
-		pass!("Established TCP connection with target.");
-		task!("Converting raw TCP connection into SSH session.");
+// 		let repo_path = cache.join(self.to_string());
+// 		let manifest_path = repo_path.join("Cargo.toml");
+// 		let vendor_path = repo_path.join("vendor");
 
-		let Ok(mut session) = SshSession::new() else {
-			fail!("Failed to construct new SSH session object.");
-			return false;
-		};
+// 		let vendor = process::Command::new("cargo")
+// 			.args(["vendor", "--manifest-path", &manifest_path.to_string_lossy(), &vendor_path.to_string_lossy()])
+// 			.output()
+// 			.unwrap();
 
-		session.set_tcp_stream(socket);
+// 		if vendor.status.success() {
+// 			pass!("Vendored dependencies of repository \x1b[1m{self}\x1b[0m.");
+// 		} else {
+// 			fail!("Failed to vendor dependencies of repository \x1b[1m{self}\x1b[0m: {}", String::from_utf8_lossy(&vendor.stderr));
+// 			return false;
+// 		}
 
-		if let Err(error) = session.handshake() {
-			fail!("SSH handshake failed: {error}");
-			return false;
-		}
+// 		task!("Compressing repository \x1b[1m{self}\x1b[0m into a tarball.");
 
-		pass!("Converted raw TCP connection into SSH session.");
-		task!("Authenticating with username and password.");
+// 		let tarball_path = cache.join(format!("{self}.tar.gz"));
 
-		let (user, password) = self.platform.default_login();
-		let auth = session.userauth_password(user, password);
+// 		let tar = process::Command::new("tar")
+// 			.args(["czf", &tarball_path.to_string_lossy(), "-C", &cache.to_string_lossy(), &format!("./{self}")])
+// 			.output()
+// 			.unwrap();
 
-		if auth.is_ok() && session.authenticated() {
-			pass!("Authenticated with login \x1b[1muser\x1b[0m : \x1b[1mpassword\x1b[0m.")
-		} else {
-			fail!("Failed to authenticate with the default login credentials.");
-			return false;
-		}
+// 		if tar.status.success() {
+// 			pass!("Compressed repository \x1b[1m{self}\x1b[0m into a tarball.");
+// 		} else {
+// 			fail!("Failed to compress repository \x1b[1m{self}\x1b[0m into a tarball.");
+// 			return false;
+// 		}
 
-		self.session = Some(session);
-		true
-	}
+// 		true
+// 	}
+// }
 
-	pub fn deploy(&self, cache: &Path) {
-		task!("Deploying \x1b[1m{}\x1b[0m to target \x1b[1m{}\x1b[0m.", self.repository, self.hostname);
+// impl fmt::Display for Repository {
+// 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+// 		match self {
+// 			Self::Ahrs => write!(f, "ahrs"),
+// 			Self::Flight => write!(f, "flight"),
+// 			Self::Gui => write!(f, "gui"),
+// 			Self::Sam => write!(f, "sam"),
+// 			Self::Servo => write!(f, "servo"),
+// 		}
+// 	}
+// }
 
-		// self.install_rust();
-		self.transfer(&cache);
-		self.check_rust();
-		self.install();
+// struct Target {
+// 	hostname: &'static str,
+// 	repository: Repository,
+// 	platform: Platform,
 
-		pass!("Deployed \x1b[1m{}\x1b[0m to target \x1b[1m{}\x1b[0m.", self.repository, self.hostname);
-	}
+// 	session: Option<SshSession>,
+// }
 
-	/// Ensures that Rust is installed on the target machine.
-	pub fn check_rust(&self) -> bool {
-		task!("Checking for Rust installation on target \x1b[1m{}\x1b[0m.", self.hostname);
+// impl Target {
+// 	pub const fn new(hostname: &'static str, repository: Repository, platform: Platform) -> Self {
+// 		Target {
+// 			hostname,
+// 			repository,
+// 			platform,
+// 			session: None,
+// 		}
+// 	}
 
-		let Some(session) = &self.session else {
-			fail!("Target \x1b[1m{}\x1b[0m was not connected before attempting to check Rust version.", self.hostname);
-			return false;
-		};
+// 	pub fn connect(&mut self) -> bool {
+// 		task!("Locating target \x1b[1m{}\x1b[0m.", self.hostname);
 
-		let mut cargo_version = String::new();
+// 		let address = format!("{}.local:22", self.hostname)
+// 			.to_socket_addrs()
+// 			.ok()
+// 			.and_then(|mut addrs| addrs.find(|addr| addr.is_ipv4()));
 
-		let mut channel = session.channel_session().unwrap();
-		channel.exec("cargo --version").unwrap();
-		channel.read_to_string(&mut cargo_version).unwrap();
-		channel.wait_close().unwrap();
+// 		let Some(address) = address else {
+// 			fail!("Target \x1b[1m{}\x1b[0m could not be located.", self.hostname);
+// 			return false;
+// 		};
 
-		if let Some(version) = cargo_version.split(' ').nth(1) {
-			pass!("Found Rust installation on target \x1b[1m{}\x1b[0m with Cargo v{version}.", self.hostname);
-		} else {
-			warn!("Did not locate an existing Rust installation.");
-			self.install_rust();
-		}
+// 		pass!("Target \x1b[1m{}\x1b[0m located at \x1b[1m{}\x1b[0m.", self.hostname, address.ip());
+// 		task!("Establishing TCP connection with target.");
 
-		true
-	}
+// 		let Ok(socket) = TcpStream::connect_timeout(&address, Duration::from_millis(1000)) else {
+// 			fail!("Failed to establish a TCP connection with target.");
+// 			return false;
+// 		};
 
-	pub fn install_rust(&self) -> bool {
-		task!("Installing Rust version \x1b[1m{}\x1b[0m.", RUST_VERSION);
+// 		pass!("Established TCP connection with target.");
+// 		task!("Converting raw TCP connection into SSH session.");
 
-		let Some(session) = &self.session else {
-			fail!("Target \x1b[1m{}\x1b[0m was not connected before attempting to install Rust.", self.hostname);
-			return false;
-		};
+// 		let Ok(mut session) = SshSession::new() else {
+// 			fail!("Failed to construct new SSH session object.");
+// 			return false;
+// 		};
 
-		let download_url = format!("https://static.rust-lang.org/dist/rust-{RUST_VERSION}-{}.tar.gz", self.platform.triple());
+// 		session.set_tcp_stream(socket);
 
-		task!("Downloading offline installer from \x1b[1m{download_url}\x1b[0m.");
+// 		if let Err(error) = session.handshake() {
+// 			fail!("SSH handshake failed: {error}");
+// 			return false;
+// 		}
 
-		let response = reqwest::blocking::Client::new()
-			.get(&download_url)
-			.timeout(Duration::from_secs(5 * 60))
-			.send()
-			.and_then(|response| response.bytes());
+// 		pass!("Converted raw TCP connection into SSH session.");
+// 		task!("Authenticating with username and password.");
 
-		let tarball = match response {
-			Ok(bytes) => bytes,
-			Err(error) => {
-				fail!("Failed to fetch offline installer: {error}");
-				return false;
-			},
-		};
+// 		let (user, password) = self.platform.default_login();
+// 		let auth = session.userauth_password(user, password);
 
-		pass!("Downloaded offline installer from \x1b[1m{download_url}\x1b[0m.");
-		task!("Transferring installer tarball to target.");
+// 		if auth.is_ok() && session.authenticated() {
+// 			pass!("Authenticated with login \x1b[1muser\x1b[0m : \x1b[1mpassword\x1b[0m.")
+// 		} else {
+// 			fail!("Failed to authenticate with the default login credentials.");
+// 			return false;
+// 		}
 
-		let mut remote_tarball = session.scp_send(Path::new("/tmp/rust.tar.gz"), 0o644, tarball.len() as u64, None).unwrap();
-		remote_tarball.write_all(&tarball).unwrap();
-		remote_tarball.send_eof().unwrap();
-		remote_tarball.wait_eof().unwrap();
-		remote_tarball.close().unwrap();
-		remote_tarball.wait_close().unwrap();
+// 		self.session = Some(session);
+// 		true
+// 	}
 
-		pass!("Transferred installer tarball to target.");
-		task!("Uncompressing installer tarball on target.");
+// 	pub fn deploy(&self, cache: &Path) {
+// 		task!("Deploying \x1b[1m{}\x1b[0m to target \x1b[1m{}\x1b[0m.", self.repository, self.hostname);
 
-		let mut ret = Vec::new();
+// 		// self.install_rust();
+// 		self.transfer(&cache);
+// 		self.check_rust();
+// 		self.install();
 
-		let mut channel = session.channel_session().unwrap();
-		channel.exec("tar xzf /tmp/rust.tar.gz -C /tmp").unwrap();
-		channel.read_to_end(&mut ret).unwrap();
-		channel.wait_close().unwrap();
+// 		pass!("Deployed \x1b[1m{}\x1b[0m to target \x1b[1m{}\x1b[0m.", self.repository, self.hostname);
+// 	}
 
-		pass!("Uncompressed installer tarball on target.");
-		pass!("Installed Rust version \x1b[1m{RUST_VERSION}\x1b[0m.");
+// 	/// Ensures that Rust is installed on the target machine.
+// 	pub fn check_rust(&self) -> bool {
+// 		task!("Checking for Rust installation on target \x1b[1m{}\x1b[0m.", self.hostname);
 
-		true
-	}
+// 		let Some(session) = &self.session else {
+// 			fail!("Target \x1b[1m{}\x1b[0m was not connected before attempting to check Rust version.", self.hostname);
+// 			return false;
+// 		};
 
-	pub fn transfer(&self, cache: &Path) -> bool {
-		task!("Transferring \x1b[1m{}\x1b[0m to remote target \x1b[1m{}\x1b[0m.", self.repository, self.hostname);
+// 		let mut cargo_version = String::new();
 
-		let Some(session) = &self.session else {
-			fail!("Target \x1b[1m{}\x1b[0m was not connected before attempting a transfer.", self.hostname);
-			return false;
-		};
+// 		let mut channel = session.channel_session().unwrap();
+// 		channel.exec("cargo --version").unwrap();
+// 		channel.read_to_string(&mut cargo_version).unwrap();
+// 		channel.wait_close().unwrap();
 
-		let repo = self.repository;
-		let local_tarball_path = cache.join(format!("{repo}.tar.gz"));
-		let remote_tarball_path = PathBuf::from(format!("/tmp/{repo}.tar.gz"));
+// 		if let Some(version) = cargo_version.split(' ').nth(1) {
+// 			pass!("Found Rust installation on target \x1b[1m{}\x1b[0m with Cargo v{version}.", self.hostname);
+// 		} else {
+// 			warn!("Did not locate an existing Rust installation.");
+// 			self.install_rust();
+// 		}
 
-		task!("Reading locally cached \x1b[1m{repo}\x1b[0m tarball.");
+// 		true
+// 	}
 
-		let tarball = fs::read(&local_tarball_path).unwrap();
+// 	pub fn install_rust(&self) -> bool {
+// 		task!("Installing Rust version \x1b[1m{}\x1b[0m.", RUST_VERSION);
 
-		pass!("Read locally cached \x1b[1m{repo}\x1b[0m tarball into mempory.");
-		task!("Transferring \x1b{repo}\x1b[0m tarball to remote target.");
+// 		let Some(session) = &self.session else {
+// 			fail!("Target \x1b[1m{}\x1b[0m was not connected before attempting to install Rust.", self.hostname);
+// 			return false;
+// 		};
 
-		let mut remote_tarball = session.scp_send(&remote_tarball_path, 0o664, tarball.len() as u64, None).unwrap();
-		remote_tarball.write_all(&tarball).unwrap();
-		remote_tarball.send_eof().unwrap();
-		remote_tarball.wait_eof().unwrap();
-		remote_tarball.close().unwrap();
-		remote_tarball.wait_close().unwrap();
+// 		let download_url = format!("https://static.rust-lang.org/dist/rust-{RUST_VERSION}-{}.tar.gz", self.platform.triple());
 
-		pass!("Transferred \x1b[1m{repo}\x1b[0m tarball to remote target.");
-		task!("Uncompressing \x1b[1m{repo}\x1b[0m tarball on remote target.");
+// 		task!("Downloading offline installer from \x1b[1m{download_url}\x1b[0m.");
 
-		let mut ret = Vec::new();
+// 		let response = reqwest::blocking::Client::new()
+// 			.get(&download_url)
+// 			.timeout(Duration::from_secs(5 * 60))
+// 			.send()
+// 			.and_then(|response| response.bytes());
 
-		let mut channel = session.channel_session().unwrap();
-		channel.exec(&format!("tar xzf {} -C /tmp", remote_tarball_path.to_string_lossy())).unwrap();
-		channel.read_to_end(&mut ret).unwrap();
-		channel.wait_close().unwrap();
+// 		let tarball = match response {
+// 			Ok(bytes) => bytes,
+// 			Err(error) => {
+// 				fail!("Failed to fetch offline installer: {error}");
+// 				return false;
+// 			},
+// 		};
 
-		pass!("Uncompressed \x1b[1m{repo}\x1b[0m tarball on remote target.");
-		pass!("Transferred \x1b[1m{repo}\x1b[0m to remote target \x1b[1m{}\x1b[0m.", self.hostname);
+// 		pass!("Downloaded offline installer from \x1b[1m{download_url}\x1b[0m.");
+// 		task!("Transferring installer tarball to target.");
 
-		true
-	}
+// 		let mut remote_tarball = session.scp_send(Path::new("/tmp/rust.tar.gz"), 0o644, tarball.len() as u64, None).unwrap();
+// 		remote_tarball.write_all(&tarball).unwrap();
+// 		remote_tarball.send_eof().unwrap();
+// 		remote_tarball.wait_eof().unwrap();
+// 		remote_tarball.close().unwrap();
+// 		remote_tarball.wait_close().unwrap();
 
-	pub fn install(&self) -> bool {
-		task!("Installing \x1b[1m{}\x1b[0m on remote target.", self.repository,);
+// 		pass!("Transferred installer tarball to target.");
+// 		task!("Uncompressing installer tarball on target.");
 
-		let Some(session) = &self.session else {
-			fail!("Target \x1b[1m{}\x1b[0m was not connected before attempting an install.", self.hostname);
-			return false;
-		};
+// 		let mut ret = Vec::new();
 
-		let mut shell_output = Vec::new();
+// 		let mut channel = session.channel_session().unwrap();
+// 		channel.exec("tar xzf /tmp/rust.tar.gz -C /tmp").unwrap();
+// 		channel.read_to_end(&mut ret).unwrap();
+// 		channel.wait_close().unwrap();
 
-		let mut channel = session.channel_session().unwrap();
-		channel.exec(&format!("cargo install --path /tmp/{} --offline", self.repository)).unwrap();
-		channel.read_to_end(&mut shell_output).unwrap();
-		channel.wait_close().unwrap();
+// 		pass!("Uncompressed installer tarball on target.");
+// 		pass!("Installed Rust version \x1b[1m{RUST_VERSION}\x1b[0m.");
+
+// 		true
+// 	}
+
+// 	pub fn transfer(&self, cache: &Path) -> bool {
+// 		task!("Transferring \x1b[1m{}\x1b[0m to remote target \x1b[1m{}\x1b[0m.", self.repository, self.hostname);
+
+// 		let Some(session) = &self.session else {
+// 			fail!("Target \x1b[1m{}\x1b[0m was not connected before attempting a transfer.", self.hostname);
+// 			return false;
+// 		};
+
+// 		let repo = self.repository;
+// 		let local_tarball_path = cache.join(format!("{repo}.tar.gz"));
+// 		let remote_tarball_path = PathBuf::from(format!("/tmp/{repo}.tar.gz"));
+
+// 		task!("Reading locally cached \x1b[1m{repo}\x1b[0m tarball.");
+
+// 		let tarball = fs::read(&local_tarball_path).unwrap();
+
+// 		pass!("Read locally cached \x1b[1m{repo}\x1b[0m tarball into mempory.");
+// 		task!("Transferring \x1b{repo}\x1b[0m tarball to remote target.");
+
+// 		let mut remote_tarball = session.scp_send(&remote_tarball_path, 0o664, tarball.len() as u64, None).unwrap();
+// 		remote_tarball.write_all(&tarball).unwrap();
+// 		remote_tarball.send_eof().unwrap();
+// 		remote_tarball.wait_eof().unwrap();
+// 		remote_tarball.close().unwrap();
+// 		remote_tarball.wait_close().unwrap();
+
+// 		pass!("Transferred \x1b[1m{repo}\x1b[0m tarball to remote target.");
+// 		task!("Uncompressing \x1b[1m{repo}\x1b[0m tarball on remote target.");
+
+// 		let mut ret = Vec::new();
+
+// 		let mut channel = session.channel_session().unwrap();
+// 		channel.exec(&format!("tar xzf {} -C /tmp", remote_tarball_path.to_string_lossy())).unwrap();
+// 		channel.read_to_end(&mut ret).unwrap();
+// 		channel.wait_close().unwrap();
+
+// 		pass!("Uncompressed \x1b[1m{repo}\x1b[0m tarball on remote target.");
+// 		pass!("Transferred \x1b[1m{repo}\x1b[0m to remote target \x1b[1m{}\x1b[0m.", self.hostname);
+
+// 		true
+// 	}
+
+// 	pub fn install(&self) -> bool {
+// 		task!("Installing \x1b[1m{}\x1b[0m on remote target.", self.repository,);
+
+// 		let Some(session) = &self.session else {
+// 			fail!("Target \x1b[1m{}\x1b[0m was not connected before attempting an install.", self.hostname);
+// 			return false;
+// 		};
+
+// 		let mut shell_output = Vec::new();
+
+// 		let mut channel = session.channel_session().unwrap();
+// 		channel.exec(&format!("cargo install --path /tmp/{} --offline", self.repository)).unwrap();
+// 		channel.read_to_end(&mut shell_output).unwrap();
+// 		channel.wait_close().unwrap();
 		
-		pass!("Installed \x1b[1m{}\x1b[0m on remote target.", self.repository);
-		true
-	}
-}
+// 		pass!("Installed \x1b[1m{}\x1b[0m on remote target.", self.repository);
+// 		true
+// 	}
+// }
 
 // const DEFAULT_TARGETS: [Target; 8] = [
 // 	Target::new("sam-01", Repository::Sam, Platform::Beaglebone),
@@ -425,76 +502,93 @@ impl Target {
 /// Compiles and deploys MCFS binaries to respective machines.
 /// 
 pub fn deploy(args: &ArgMatches) {
-	let prepare = *args.get_one::<bool>("prepare").unwrap();
-	let offline = *args.get_one::<bool>("offline").unwrap();
-	// let target = args.get_one::<String>("to");
-	// let path = args.get_one::<String>("path");
+	// let dry = *args.get_one::<bool>("dry").unwrap();
+	// let offline = *args.get_one::<bool>("offline").unwrap();
+	// let repo = args.get_one::<String>("repo");
 
-	if prepare && offline {
-		fail!("Cannot prepare for deployment while offline.");
-		return;
-	}
+	for repo in Repository::all() {
+		task!("Caching repository \x1b[1m{repo}\x1b[0m.");
+		repo.fetch().unwrap();
+		pass!("Cached repository \x1b[1m{repo}\x1b[0m.");
 
-	let cache = match locate_cache() {
-		Ok(cache) => cache,
-		Err(error) => {
-			fail!("Failed to locate cache: {error}");
-			return;
-		},
-	};
-
-	// TODO: Take into account --to flag
-	// let targets = DEFAULT_TARGETS;
-	let targets = vec![
-		Target::new("jeffs-macbook-pro", Repository::Servo, Platform::AppleSilicon),
-		Target::new("sam-01", Repository::Sam, Platform::Beaglebone),
-		Target::new("sam-02", Repository::Sam, Platform::Beaglebone),
-		Target::new("sam-03", Repository::Sam, Platform::Beaglebone),
-		Target::new("sam-04", Repository::Sam, Platform::Beaglebone),
-		Target::new("sam-05", Repository::Sam, Platform::Beaglebone),
-		Target::new("sam-06", Repository::Sam, Platform::Beaglebone),
-		Target::new("gui-01", Repository::Gui, Platform::Meerkat),
-		Target::new("gui-02", Repository::Gui, Platform::Meerkat),
-		Target::new("gui-03", Repository::Gui, Platform::Meerkat),
-		Target::new("gui-04", Repository::Gui, Platform::Meerkat),
-		Target::new("gui-05", Repository::Gui, Platform::Meerkat),
-		Target::new("server-01", Repository::Servo, Platform::Meerkat),
-		Target::new("server-02", Repository::Servo, Platform::Meerkat),
-		Target::new("ahrs", Repository::Ahrs, Platform::Beaglebone),
-		Target::new("flight-01", Repository::Flight, Platform::Beaglebone),
-		Target::new("flight-02", Repository::Flight, Platform::Beaglebone),
-	];
-
-	let mut repositories = Repository::all();
-
-	for target in &targets {
-		if !repositories.contains(&target.repository) {
-			repositories.push(target.repository);
-		}
-	}
-
-	for repo in repositories {
-		task!("Fetching and caching latest version of \x1b[1m{repo}\x1b[0m.");
-		
-		if repo.fetch_latest(&cache) { // succeeded
-			pass!("Fetched and cached latest version of \x1b[1m{repo}\x1b[0m.");
-		} else { // failed
-			fail!("Failed to fetch latest version of \x1b[1m{repo}\x1b[0m.");
-			continue;
-		}
-
-		task!("Bundling and compressing \x1b[1m{repo}\x1b[0m into a tarball.");
-
-		if repo.bundle(&cache) {
-			pass!("Bundled and compressed \x1b[1m{repo}\x1b[0m into a tarball.");
+		task!("Compiling repository \x1b[1m{repo}\x1b[0m.");
+		if let Err(error) = repo.compile_for(Platform::Beaglebone) {
+			fail!("Failed to compile repository \x1b[1m{repo}\x1b[0m: {error}");
 		} else {
-			fail!("Failed to bundle and compress \x1b[1m{repo}\x1b[0m into a tarball.");
-			continue;
+			pass!("Compiled repository \x1b[1m{repo}\x1b[0m.");
 		}
 	}
 
-	for mut target in targets {
-		target.connect();
-		target.deploy(&cache);
-	}
+	// let prepare = *args.get_one::<bool>("prepare").unwrap();
+	// let offline = *args.get_one::<bool>("offline").unwrap();
+	// // let target = args.get_one::<String>("to");
+	// // let path = args.get_one::<String>("path");
+
+	// if prepare && offline {
+	// 	fail!("Cannot prepare for deployment while offline.");
+	// 	return;
+	// }
+
+	// let cache = match locate_cache() {
+	// 	Ok(cache) => cache,
+	// 	Err(error) => {
+	// 		fail!("Failed to locate cache: {error}");
+	// 		return;
+	// 	},
+	// };
+
+	// // TODO: Take into account --to flag
+	// // let targets = DEFAULT_TARGETS;
+	// let targets = vec![
+	// 	Target::new("jeffs-macbook-pro", Repository::Servo, Platform::AppleSilicon),
+	// 	Target::new("sam-01", Repository::Sam, Platform::Beaglebone),
+	// 	Target::new("sam-02", Repository::Sam, Platform::Beaglebone),
+	// 	Target::new("sam-03", Repository::Sam, Platform::Beaglebone),
+	// 	Target::new("sam-04", Repository::Sam, Platform::Beaglebone),
+	// 	Target::new("sam-05", Repository::Sam, Platform::Beaglebone),
+	// 	Target::new("sam-06", Repository::Sam, Platform::Beaglebone),
+	// 	Target::new("gui-01", Repository::Gui, Platform::Meerkat),
+	// 	Target::new("gui-02", Repository::Gui, Platform::Meerkat),
+	// 	Target::new("gui-03", Repository::Gui, Platform::Meerkat),
+	// 	Target::new("gui-04", Repository::Gui, Platform::Meerkat),
+	// 	Target::new("gui-05", Repository::Gui, Platform::Meerkat),
+	// 	Target::new("server-01", Repository::Servo, Platform::Meerkat),
+	// 	Target::new("server-02", Repository::Servo, Platform::Meerkat),
+	// 	Target::new("ahrs", Repository::Ahrs, Platform::Beaglebone),
+	// 	Target::new("flight-01", Repository::Flight, Platform::Beaglebone),
+	// 	Target::new("flight-02", Repository::Flight, Platform::Beaglebone),
+	// ];
+
+	// let mut repositories = Repository::all();
+
+	// for target in &targets {
+	// 	if !repositories.contains(&target.repository) {
+	// 		repositories.push(target.repository);
+	// 	}
+	// }
+
+	// for repo in repositories {
+	// 	task!("Fetching and caching latest version of \x1b[1m{repo}\x1b[0m.");
+		
+	// 	if repo.fetch_latest(&cache) { // succeeded
+	// 		pass!("Fetched and cached latest version of \x1b[1m{repo}\x1b[0m.");
+	// 	} else { // failed
+	// 		fail!("Failed to fetch latest version of \x1b[1m{repo}\x1b[0m.");
+	// 		continue;
+	// 	}
+
+	// 	task!("Bundling and compressing \x1b[1m{repo}\x1b[0m into a tarball.");
+
+	// 	if repo.bundle(&cache) {
+	// 		pass!("Bundled and compressed \x1b[1m{repo}\x1b[0m into a tarball.");
+	// 	} else {
+	// 		fail!("Failed to bundle and compress \x1b[1m{repo}\x1b[0m into a tarball.");
+	// 		continue;
+	// 	}
+	// }
+
+	// for mut target in targets {
+	// 	target.connect();
+	// 	target.deploy(&cache);
+	// }
 }
