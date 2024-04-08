@@ -496,7 +496,7 @@ fn home_menu(f: &mut Frame, area : Rect, tui_data: &TuiData) {
 
     let horizontal  = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Fill(1), Constraint::Length(40), Constraint::Length(80), Constraint::Length(60), Constraint::Fill(1)])
+        .constraints([Constraint::Fill(1), Constraint::Length(40), Constraint::Length(75), Constraint::Length(45), Constraint::Fill(1)])
         .split(area);
 
 
@@ -661,7 +661,7 @@ fn draw_valves(f: &mut Frame, area : Rect, tui_data: &TuiData) {
 
         // Make the actual row of info
         rows.push(Row::new(vec![
-            Cell::from(Span::from(name.clone()).style(name_style)),    // Name of Valve
+            Cell::from(Span::from(name.clone()).to_centered_line().style(name_style)),    // Name of Valve
             voltage_rows[0].clone(),
             voltage_rows[1].clone(),
             current_rows[0].clone(),
@@ -672,7 +672,7 @@ fn draw_valves(f: &mut Frame, area : Rect, tui_data: &TuiData) {
     }
 
     let widths = [
-        Constraint::Length(16),
+        Constraint::Length(12),
         Constraint::Length(7),
         Constraint::Length(8),
         Constraint::Length(8),
@@ -685,7 +685,7 @@ fn draw_valves(f: &mut Frame, area : Rect, tui_data: &TuiData) {
     .style(YJSP_STYLE)
     // It has an optional header, which is simply a Row always visible at the top.
     .header(
-        Row::new(vec![Line::from("Name"), Span::from("Voltage").to_right_aligned_line(), Line::from(""), Span::from("Current").to_right_aligned_line(), Line::from(""), Span::from("Derived").to_centered_line(), Span::from("Commanded").to_centered_line()])
+        Row::new(vec![Span::from("Name").to_centered_line(), Span::from("Voltage").to_right_aligned_line(), Line::from(""), Span::from("Current").to_right_aligned_line(), Line::from(""), Span::from("Derived").to_centered_line(), Span::from("Commanded").to_centered_line()])
             .style(Style::new().bold())
             // To add space between the header and the rest of the rows, specify the margin
             .bottom_margin(1),
@@ -745,7 +745,7 @@ fn draw_sensors(f: &mut Frame, area : Rect, tui_data: &TuiData) {
         }
 
         rows.push(Row::new(vec![
-            Cell::from(Span::from(name.clone()).style(normal_style).bold()),    // Sensor Name
+            Cell::from(Span::from(name.clone()).style(normal_style).bold().to_right_aligned_line()),    // Sensor Name
             Cell::from(Span::from(format!("{:.3}", datapoint.measurement.value)).to_right_aligned_line().style(data_style)),    // Measurement value
             Cell::from(Span::from(format!("{}", datapoint.measurement.unit)).to_left_aligned_line().style(data_style.fg(GREY))),    // Measurement unit
             Cell::from(Span::from(format!("{:+.3}", d_v)).to_left_aligned_line()).style(d_v_style), // Rolling Change of value (see update_information)
@@ -754,9 +754,9 @@ fn draw_sensors(f: &mut Frame, area : Rect, tui_data: &TuiData) {
 
     //  ~Fixed Lengths with some room to expand
     let widths = [
-        Constraint::Min(16),
         Constraint::Min(12),
-        Constraint::Length(7),
+        Constraint::Min(10),
+        Constraint::Length(5),
         Constraint::Min(14)
     ];
 
@@ -765,7 +765,7 @@ fn draw_sensors(f: &mut Frame, area : Rect, tui_data: &TuiData) {
         .style(normal_style)
         // It has an optional header, which is simply a Row always visible at the top.
         .header(
-            Row::new(vec![Line::from("Name"), Span::from("Value").to_right_aligned_line(), Span::from("Unit").to_centered_line(), Span::from("Rolling Change").to_centered_line()])
+            Row::new(vec![Span::from("Name").to_right_aligned_line(), Span::from("Value").to_right_aligned_line(), Span::from("Unit").to_centered_line(), Span::from("Rolling Change").to_centered_line()])
                 .style(Style::new().bold())
                 // To add space between the header and the rest of the rows, specify the margin
                 .bottom_margin(1),
