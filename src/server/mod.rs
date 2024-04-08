@@ -44,6 +44,11 @@ pub struct Server {
 	pub shared: Shared,
 }
 
+
+async fn wait_for_display_end(shutdown_future : tokio::task::JoinHandle<io::Result<()>>) {
+	let _ = shutdown_future.await;
+}
+
 impl Server {
 	/// Constructs a new `Server` and opens a `Database` based on the path given.
 	pub fn new(database_path: Option<&Path>) -> anyhow::Result<Self> {
@@ -65,8 +70,10 @@ impl Server {
 		Ok(Server { shared })
 	}
 
-	/// Serves the route functions with permissive CORS; does not exit.
-	pub async fn serve(&self) -> io::Result<()> {
+	/// Serves the route functions with permissive CORS; Exits when the shutdown_future returns via a graceful shutdown.
+	/// Of note is that this graceful shutdown can wait for outstanding requests to complete (such as an oversized export),
+	/// Which may delay the time it takes for the program to truly exit after the shutdown_future has returned.
+	pub async fn serve<'a>(&'a self, shutdown_future : tokio::task::JoinHandle<io::Result<()>>) -> io::Result<()> {
 		use axum::routing::{get, post, put, delete};
 
 		let cors = CorsLayer::new()
@@ -99,8 +106,10 @@ impl Server {
 			.with_state(self.shared.clone())
 			.into_make_service_with_connect_info::<SocketAddr>();
 
-		let listener = TcpListener::bind("0.0.0.0:7200").await?;
-		axum::serve(listener, router).await?;
+		let listener = TcpListener::bind("0.0.0.0:7200").await?;	// Get TCP Listener
+		axum::serve(listener, router)	// Launch listener with routings set before (Launch the web server with these routings on these ports / ip / hostname / etc on this listener)
+		.with_graceful_shutdown(wait_for_display_end(shutdown_future))	// Gracefully shut down when the shutdown_future has returned / finished. This is typically the TUI or an infinite hang / pending future
+		.await?;
 
 		Ok(())
 	}
