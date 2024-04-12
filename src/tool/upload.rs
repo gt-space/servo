@@ -1,9 +1,12 @@
-use std::{fs, path::Path};
+use std::{fs, path::PathBuf};
+use clap::ArgMatches;
 use jeflog::fail;
 use serde_json::json;
 
 /// Tool function used to upload a sequence to be stored on the control server.
-pub fn upload(sequence_path: &Path) {
+pub fn upload(args: &ArgMatches) {
+	let sequence_path = args.get_one::<PathBuf>("sequence_path").unwrap();
+
 	let name = sequence_path
 		.file_stem()
 		.expect("given path does not have a file stem")

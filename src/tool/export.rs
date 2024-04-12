@@ -1,14 +1,23 @@
+use clap::ArgMatches;
 use jeflog::fail;
 use serde_json::json;
 use std::{fs, path::PathBuf, time::Duration};
 
 /// Function for requesting all data between two timestamps as stored on the ground server.
 /// Used in the export command line routing.
-pub fn export(from: Option<f64>, to: Option<f64>, output_path: &str) {
-	let output_path = PathBuf::from(output_path);
+pub fn export(args: &ArgMatches) {
+	let start = args.get_one::<f64>("start")
+		.copied()
+		.unwrap_or(0.0);
 
-	let from = from.unwrap_or(0.0);
-	let to = to.unwrap_or(f64::MAX);
+	let end = args.get_one::<f64>("end")
+		.copied()
+		.unwrap_or(f64::MAX);
+
+	let output_path: PathBuf = args.get_one::<String>("output_path")
+		.unwrap()
+		.parse()
+		.unwrap();
 
 	let export_format = output_path
 		.extension()
@@ -19,8 +28,8 @@ pub fn export(from: Option<f64>, to: Option<f64>, output_path: &str) {
 	let export_result = client.post("http://localhost:7200/data/export")
 		.json(&json!({
 			"format": export_format,
-			"from": from,
-			"to": to
+			"from": start,
+			"to": end,
 		}))
 		.timeout(Duration::from_secs(3600))
 		.send()

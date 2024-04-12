@@ -1,11 +1,9 @@
-use std::net::ToSocketAddrs;
-
-use anyhow::anyhow;
 use clap::ArgMatches;
 use jeflog::{fail, pass, warn};
+use std::net::ToSocketAddrs;
 
 /// Tool function which locates all known hostnames on the network.
-pub fn locate(args: &ArgMatches) -> anyhow::Result<()> {
+pub fn locate(args: &ArgMatches) {
 	let mut prefixes = vec![("server", 3), ("flight", 2), ("ground", 2), ("gui", 6), ("sam", 6)];
 
 	if let Some(subsystem) = args.get_one::<String>("subsystem") {
@@ -16,7 +14,8 @@ pub fn locate(args: &ArgMatches) -> anyhow::Result<()> {
 		if let Some(chosen) = chosen {
 			prefixes = vec![prefixes[chosen]];
 		} else {
-			return Err(anyhow!("Invalid subsystem / device hostname prefix '{subsystem}'."));
+			fail!("Invalid subsystem / device hostname prefix '{subsystem}'.");
+			return;
 		}
 	}
 
@@ -39,6 +38,4 @@ pub fn locate(args: &ArgMatches) -> anyhow::Result<()> {
 			}
 		}
 	}
-
-	Ok(())
 }

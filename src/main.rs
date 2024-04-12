@@ -83,13 +83,13 @@ fn main() -> anyhow::Result<()> {
 						.short('o')
 				)
 				.arg(
-					Arg::new("from")
+					Arg::new("start")
 						.required(false)
 						.long("from")
 						.value_parser(clap::value_parser!(f64))
 				)
 				.arg(
-					Arg::new("to")
+					Arg::new("end")
 						.required(false)
 						.long("to")
 						.value_parser(clap::value_parser!(f64))
@@ -108,7 +108,7 @@ fn main() -> anyhow::Result<()> {
 			Command::new("run")
 				.about("Sends a Python sequence to be run on the flight computer.")
 				.arg(
-					Arg::new("path")
+					Arg::new("sequence")
 						.required(true)
 				)
 		)
@@ -150,18 +150,12 @@ fn main() -> anyhow::Result<()> {
 		Some(("clean", args)) => tool::clean(args),
 		Some(("deploy", args)) => tool::deploy(args),
 		Some(("emulate", args)) => tool::emulate(args),
-		Some(("export", args)) => {
-			tool::export(
-				args.get_one::<f64>("from").copied(),
-				args.get_one::<f64>("to").copied(),
-				args.get_one::<String>("output_path").unwrap(),
-			);
-		},
-		Some(("locate", args)) => tool::locate(args)?,
-		Some(("run", args)) => tool::run(args.get_one::<String>("path").unwrap()),
-		Some(("serve", args)) => tool::serve(&servo_dir, args),
-		Some(("sql", args)) => tool::sql(args.get_one::<String>("raw_sql").unwrap())?,
-		Some(("upload", args)) => tool::upload(args.get_one::<PathBuf>("sequence_path").unwrap()),
+		Some(("export", args)) => tool::export(args),
+		Some(("locate", args)) => tool::locate(args),
+		Some(("run", args)) => tool::run(args),
+		Some(("serve", args)) => tool::serve(args),
+		Some(("sql", args)) => tool::sql(args)?,
+		Some(("upload", args)) => tool::upload(args),
 		_ => {
 			fail!("Invalid command. Please check the command you entered.");
 			process::exit(1);

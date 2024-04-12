@@ -1,3 +1,4 @@
+use clap::ArgMatches;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -7,7 +8,9 @@ pub struct SqlResponse {
 }
 
 /// Tool command function that sends a SQL request to Servo.
-pub fn sql(sql: &str) -> anyhow::Result<()> {
+pub fn sql(args: &ArgMatches) -> anyhow::Result<()> {
+	let sql = args.get_one::<String>("raw_sql").unwrap();
+
 	let request = serde_json::json!({
 		"raw_sql": sql
 	});

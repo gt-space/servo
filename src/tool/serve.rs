@@ -1,12 +1,11 @@
 use clap::ArgMatches;
+use crate::{interface, server::{flight, Server}, Cache};
 use jeflog::fail;
-use crate::{interface, server::{flight, Server}};
-use std::path::Path;
 
 /// Performs the necessary setup to connect to the servo server.
 /// This function initializes database connections, spawns background tasks,
 /// and starts the HTTP server to serve the application upon request.
-pub fn serve(servo_dir: &Path, args: &ArgMatches){
+pub fn serve(args: &ArgMatches){
 	let volatile = args.get_one::<bool>("volatile")
 		.copied()
 		.unwrap_or(false);
@@ -15,7 +14,7 @@ pub fn serve(servo_dir: &Path, args: &ArgMatches){
 		.copied()
 		.unwrap_or(false);
 
-	let database_path = servo_dir.join("database.sqlite");
+	let database_path = Cache::get().path.join("database.sqlite");
 	let server = match Server::new((!volatile).then_some(&database_path)) {
 		Ok(server) => server,
 		Err(error) => {
