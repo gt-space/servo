@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use clap::ArgMatches;
 use crate::{cache_path, Cache};
 use jeflog::{fail, pass, task, warn};
-use std::{collections::HashSet, fmt, net::{IpAddr, TcpStream}, path::PathBuf, process, time::Duration};
+use std::{collections::HashSet, fmt, net::{IpAddr, TcpStream}, path::{Path, PathBuf}, process, time::Duration};
 use ssh::LocalShell;
 
 // const SSH_PRIVATE_KEY: &'static str = include_str!("../../keys/id_ed25519");
@@ -97,11 +97,11 @@ impl Repository {
 		Ok(())
 	}
 
-	pub fn compile_for(self, platform: Platform) -> anyhow::Result<()> {
+	pub fn compile_for(self, platform: Platform, path: Option<&Path>) -> anyhow::Result<()> {
 		let target = platform.triple();
-		let repo_path = Cache::get()
-			.path
-			.join(self.to_string());
+
+		let cache_path = Cache::get().path.join(self.to_string());
+		let repo_path = path.unwrap_or(&cache_path);
 
 		let manifest_path = repo_path.join("Cargo.toml");
 		let config_path = repo_path.join(".cargo/config.toml");
@@ -317,7 +317,7 @@ impl Target {
 pub fn deploy(args: &ArgMatches) {
 	let dry = *args.get_one::<bool>("dry").unwrap();
 	let offline = *args.get_one::<bool>("offline").unwrap();
-	let path = args.get_one::<String>("path");
+	let path = args.get_one::<String>("path").map(|path| PathBuf::from(path));
 	let target_names = args.get_one::<String>("targets");
 
 	let mut targets;
@@ -336,7 +336,7 @@ pub fn deploy(args: &ArgMatches) {
 				hostname,
 				assigned_hostname: None,
 				assigned_ip: None,
-				platform: Platform::Beaglebone,
+				platform: Platform::RaspberryPi,
 				repository: Repository::Sam,
 			});
 		}
@@ -424,7 +424,11 @@ pub fn deploy(args: &ArgMatches) {
 
 		targets.retain(|target| cached.contains(&target.repository));
 	} else {
-		warn!("1. Using local cache because --offline flag was set.");
+		if let Some(path) = &path {
+			warn!("1. Using local repository at \x1b[1m{}\x1b[0m.", path.to_string_lossy());
+		} else {
+			warn!("1. Using local cache because --offline flag was set.");
+		}
 	}
 
 	println!();
@@ -443,7 +447,7 @@ pub fn deploy(args: &ArgMatches) {
 
 		task!("Compiling repository \x1b[1m{repo}\x1b[0m.");
 
-		if let Err(error) = repo.compile_for(platform) {
+		if let Err(error) = repo.compile_for(platform, path.as_deref().clone()) {
 			fail!("Failed to compile repository \x1b[1m{repo}\x1b[0m: {error}");
 		} else {
 			pass!("Compiled repository \x1b[1m{repo}\x1b[0m.");
