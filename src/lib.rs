@@ -16,6 +16,7 @@ use std::{env, fmt, fs, io, path::{Path, PathBuf}, sync::OnceLock};
 
 static CACHE: OnceLock<Cache> = OnceLock::new();
 
+/// Holds the path of the Servo cache directory.
 #[derive(Clone, Debug)]
 pub struct Cache {
 	/// The path of the cache directory.

@@ -27,27 +27,27 @@ fn main() -> anyhow::Result<()> {
 			Command::new("deploy")
 				.about("Deploys YJSP software to all available computers on the network.")
 				.arg(
-					Arg::new("prepare")
-						.long("prepare")
-						.required(false)
-						.num_args(0)
+					Arg::new("dry")
+						.long("dry")
+						.short('d')
+						.action(ArgAction::SetTrue)
+						.help("Perform a dry run of the deployment.")
 				)
 				.arg(
 					Arg::new("offline")
 						.long("offline")
-						.required(false)
-						.num_args(0)
-				)
-				.arg(
-					Arg::new("to")
-						.long("to")
-						.short('t')
-						.required(false)
+						.short('o')
+						.action(ArgAction::SetTrue)
+						.help("Use cached repositories for deployment.")
 				)
 				.arg(
 					Arg::new("path")
-						.long("path")
-						.short('p')
+						.index(1)
+						.required(false)
+				)
+				.arg(
+					Arg::new("targets")
+						.index(2)
 						.required(false)
 				)
 		)
@@ -147,7 +147,7 @@ fn main() -> anyhow::Result<()> {
 		.get_matches();
 	
 	match matches.subcommand() {
-		Some(("clean", _)) => tool::clean(&servo_dir),
+		Some(("clean", args)) => tool::clean(args),
 		Some(("deploy", args)) => tool::deploy(args),
 		Some(("emulate", args)) => tool::emulate(args),
 		Some(("export", args)) => {
